@@ -30,6 +30,9 @@ class FloatService : Service() {
     private var airSnr: Float? = null
     private var gndRssi: Float? = null
     private var gndSnr: Float? = null
+    // 是否实际收到了 SNR 字段（用于断链判断）
+    private var airHasSnr = false
+    private var gndHasSnr = false
 
     override fun onCreate() {
         super.onCreate()
@@ -44,8 +47,8 @@ class FloatService : Service() {
 
         totalPackets = 0
         currentHz = 0
-        airRssi = null; airSnr = null
-        gndRssi = null; gndSnr = null
+        airRssi = null; airSnr = null; airHasSnr = false
+        gndRssi = null; gndSnr = null; gndHasSnr = false
         logger.startNewSession()
 
         showFloatWindow()
@@ -75,9 +78,12 @@ class FloatService : Service() {
                     airRssi = linkStatus.airRssi1.toFloatOrNull()?.let { Math.abs(it) }
                         ?: linkStatus.airRssi2.toFloatOrNull()?.let { Math.abs(it) }
                     airSnr = linkStatus.airSnr.toFloatOrNull()
+                    // 断链判定：SNR="0" 或 RSSI="110"
+                    airHasSnr = !(linkStatus.airSnr == "0" || linkStatus.airRssi1 == "110" || linkStatus.airRssi2 == "110")
                     gndRssi = linkStatus.gndRssi1.toFloatOrNull()?.let { Math.abs(it) }
                         ?: linkStatus.gndRssi2.toFloatOrNull()?.let { Math.abs(it) }
                     gndSnr = linkStatus.gndSnr.toFloatOrNull()
+                    gndHasSnr = !(linkStatus.gndSnr == "0" || linkStatus.gndRssi1 == "110" || linkStatus.gndRssi2 == "110")
                 } catch (je: Exception) {
                     Log.w("FloatService", "RSSI解析跳过: ${je.message}")
                 }
@@ -114,6 +120,8 @@ class FloatService : Service() {
             airSnr?.let { putExtra("AIR_SNR", it) }
             gndRssi?.let { putExtra("GND_RSSI", it) }
             gndSnr?.let { putExtra("GND_SNR", it) }
+            putExtra("AIR_HAS_SNR", airHasSnr)
+            putExtra("GND_HAS_SNR", gndHasSnr)
         }
         LocalBroadcastManager.getInstance(this@FloatService).sendBroadcast(intent)
     }
