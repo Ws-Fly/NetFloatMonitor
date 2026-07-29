@@ -1,197 +1,105 @@
 package com.example.netfloatmonitor
 
-import android.app.*
+import android.app.Service
+import android.content.Context
 import android.content.Intent
-import android.graphics.PixelFormat
-import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
-import android.view.WindowManager
-import androidx.core.app.NotificationCompat
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import android.util.Log
-import java.util.Timer
-import java.util.TimerTask
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.nio.charset.Charset
 
 class FloatService : Service() {
 
+    companion object {
+        const val ACTION_SIGNAL_UPDATE = "com.example.netfloatmonitor.SIGNAL_UPDATE"
+        const val EXTRA_AIR_RSSI = "air_rssi"
+        const val EXTRA_AIR_SNR = "air_snr"
+        const val EXTRA_GND_RSSI = "gnd_rssi"
+        const val EXTRA_GND_SNR = "gnd_snr"
+
+        const val PREFS_NAME = "netfloat_prefs"
+        const val KEY_IP = "ip"
+        const val KEY_PORT = "port"
+    }
+
+    private var socket: DatagramSocket? = null
+    private var receiveThread: Thread? = null
+    private var running = false
+
     private var floatView: FloatView? = null
-    private var receiver: UdpReceiver? = null
-    private lateinit var logger: LogManager
-
-    private var totalPackets = 0
-    private var packetsInLastSecond = 0
-    private var currentHz = 0
-    private var statusTimer: Timer? = null
-
-    // ── 缓存最新 RSSI/SNR（从 LinkStatus 解析） ──
-    private var airRssi: Float? = null
-    private var airSnr: Float? = null
-    private var gndRssi: Float? = null
-    private var gndSnr: Float? = null
-    // 是否实际收到了 SNR 字段（用于断链判断）
-    private var airHasSnr = false
-    private var gndHasSnr = false
 
     override fun onCreate() {
         super.onCreate()
-        logger = LogManager(this)
-        Log.d("FloatService", "Service onCreate 触发")
-        createNotificationChannel()
-        startForeground(1001, createNotification())
+        floatView = FloatView(this)
+        floatView?.show()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val port = intent?.getIntExtra("PORT", 16789) ?: 16789
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val ip = prefs.getString(KEY_IP, "0.0.0.0") ?: "0.0.0.0"
+        val port = prefs.getInt(KEY_PORT, 8080)
 
-        totalPackets = 0
-        currentHz = 0
-        airRssi = null; airSnr = null; airHasSnr = false
-        gndRssi = null; gndSnr = null; gndHasSnr = false
-        logger.startNewSession()
-
-        showFloatWindow()
-        startUdpReceive(port)
-        startStatusTimer()
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            sendStatusBroadcast()
-        }, 200)
-
-        return START_NOT_STICKY
+        startUdp(port)
+        return START_STICKY
     }
 
-    private fun startUdpReceive(port: Int) {
-        receiver?.stop()
+    private fun startUdp(port: Int) {
+        if (running) return
+        running = true
 
-        receiver = UdpReceiver(port) { data ->
+        receiveThread = Thread {
             try {
-                totalPackets++
-                packetsInLastSecond++
+                socket = DatagramSocket(port)
+                val buf = ByteArray(4096)
 
-                logger.save(data)
+                while (running) {
+                    val packet = DatagramPacket(buf, buf.size)
+                    socket?.receive(packet)
 
-                // ── 解析 JSON 提取 RSSI/SNR ──
-                try {
-                    val linkStatus = JsonParser.parse(data)
-                    airRssi = linkStatus.airRssi1.toFloatOrNull()?.let { Math.abs(it) }
-                        ?: linkStatus.airRssi2.toFloatOrNull()?.let { Math.abs(it) }
-                    airSnr = linkStatus.airSnr.toFloatOrNull()
-                    // 断链判定：SNR="0" 或 RSSI="110"
-                    airHasSnr = !(linkStatus.airSnr == "0" || linkStatus.airRssi1 == "110" || linkStatus.airRssi2 == "110")
-                    gndRssi = linkStatus.gndRssi1.toFloatOrNull()?.let { Math.abs(it) }
-                        ?: linkStatus.gndRssi2.toFloatOrNull()?.let { Math.abs(it) }
-                    gndSnr = linkStatus.gndSnr.toFloatOrNull()
-                    gndHasSnr = !(linkStatus.gndSnr == "0" || linkStatus.gndRssi1 == "110" || linkStatus.gndRssi2 == "110")
-                } catch (je: Exception) {
-                    Log.w("FloatService", "RSSI解析跳过: ${je.message}")
-                }
-
-                floatView?.post {
-                    floatView?.updateJson(data)
+                    val json = String(packet.data, 0, packet.length, Charset.forName("UTF-8"))
+                    handleJson(json)
                 }
             } catch (e: Exception) {
-                Log.e("FloatService", "数据流转处理异常", e)
+                Log.e("FloatService", "UDP recv error", e)
             }
-        }
-
-        receiver?.start()
+        }.also { it.start() }
     }
 
-    private fun startStatusTimer() {
-        statusTimer?.cancel()
-        statusTimer = Timer()
-        statusTimer?.scheduleAtFixedRate(object : TimerTask() {
-            override fun run() {
-                currentHz = packetsInLastSecond
-                packetsInLastSecond = 0
-                sendStatusBroadcast()
-            }
-        }, 1000, 1000)
-    }
+    private fun handleJson(json: String) {
+        // 你原仓库的解析入口，不要改 JsonParser 本身
+        val status = JsonParser.parse(json)
 
-    private fun sendStatusBroadcast() {
-        val intent = Intent("com.example.netfloatmonitor.STATUS_UPDATE").apply {
-            putExtra("TOTAL_PACKETS", totalPackets)
-            putExtra("HZ", currentHz)
-            // 附带 RSSI/SNR 供主界面信号格使用
-            airRssi?.let { putExtra("AIR_RSSI", it) }
-            airSnr?.let { putExtra("AIR_SNR", it) }
-            gndRssi?.let { putExtra("GND_RSSI", it) }
-            gndSnr?.let { putExtra("GND_SNR", it) }
-            putExtra("AIR_HAS_SNR", airHasSnr)
-            putExtra("GND_HAS_SNR", gndHasSnr)
+        // ---- 抽字段（字符串原样保留，断链判定交给 SignalQuality）----
+        val airRssi = status.rssi1_a ?: "110"
+        val airSnr = status.snr_a ?: "0"
+        val gndRssi = status.rssi1_g ?: "110"
+        val gndSnr = status.snr_g ?: "0"
+
+        // ---- 刷新悬浮窗圆形总览 ----
+        floatView?.update(airRsti = airRssi, airSnr = airSnr, gndRssi = gndRssi, gndSnr = gndSnr)
+
+        // ---- 广播给 MainActivity ----
+        val broadcast = Intent(ACTION_SIGNAL_UPDATE).apply {
+            putExtra(EXTRA_AIR_RSSI, airRssi)
+            putExtra(EXTRA_AIR_SNR, airSnr)
+            putExtra(EXTRA_GND_RSSI, gndRssi)
+            putExtra(EXTRA_GND_SNR, gndSnr)
         }
-        LocalBroadcastManager.getInstance(this@FloatService).sendBroadcast(intent)
-    }
-
-    private fun showFloatWindow() {
-        if (floatView != null) return
-        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        val params = WindowManager.LayoutParams()
-
-        params.width = WindowManager.LayoutParams.WRAP_CONTENT
-        params.height = WindowManager.LayoutParams.WRAP_CONTENT
-        params.type = if (Build.VERSION.SDK_INT >= 26) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
-        params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        params.format = PixelFormat.TRANSLUCENT
-        params.x = 50
-        params.y = 200
-
-        floatView = FloatView(this, wm, params)
-        wm.addView(floatView, params)
+        sendBroadcast(broadcast)
     }
 
     override fun onDestroy() {
+        running = false
+        receiveThread?.interrupt()
+        receiveThread = null
+        try { socket?.close() } catch (_: Exception) {}
+        socket = null
+
+        floatView?.remove()
+        floatView = null
         super.onDestroy()
-        statusTimer?.cancel()
-        statusTimer = null
-
-        logger.stopSession()
-
-        val intent = Intent("com.example.netfloatmonitor.STATUS_UPDATE").apply {
-            putExtra("IS_STOPPED", true)
-        }
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
-
-        receiver?.stop()
-        receiver = null
-
-        if (floatView != null) {
-            try {
-                val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-                wm.removeView(floatView)
-            } catch (e: Exception) {
-                Log.e("FloatService", "移除悬浮窗异常: ${e.message}")
-            }
-            floatView = null
-        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= 26) {
-            val channel = NotificationChannel(
-                "net_monitor",
-                "NetFloat Monitor",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
-    }
-
-    private fun createNotification(): Notification {
-        return NotificationCompat.Builder(this, "net_monitor")
-            .setContentTitle("NetFloat Monitor")
-            .setContentText("UDP监听运行中")
-            .setSmallIcon(android.R.drawable.ic_menu_info_details)
-            .build()
-    }
 }
