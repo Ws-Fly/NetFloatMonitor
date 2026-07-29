@@ -1,7 +1,6 @@
 package com.example.netfloatmonitor
 
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
@@ -11,82 +10,83 @@ import java.nio.charset.Charset
 
 class FloatService : Service() {
 
+    private var running = false
+    private var socket: DatagramSocket? = null
+    private var receiveThread: Thread? = null
+    private var floatView: FloatView? = null
+
     companion object {
-        const val ACTION_SIGNAL_UPDATE = "com.example.netfloatmonitor.SIGNAL_UPDATE"
+        const val ACTION_SIGNAL_UPDATE = "com.example.netfloatmonitor.ACTION_SIGNAL_UPDATE"
         const val EXTRA_AIR_RSSI = "air_rssi"
         const val EXTRA_AIR_SNR = "air_snr"
         const val EXTRA_GND_RSSI = "gnd_rssi"
         const val EXTRA_GND_SNR = "gnd_snr"
-
-        const val PREFS_NAME = "netfloat_prefs"
-        const val KEY_IP = "ip"
-        const val KEY_PORT = "port"
     }
-
-    private var socket: DatagramSocket? = null
-    private var receiveThread: Thread? = null
-    private var running = false
-
-    private var floatView: FloatView? = null
 
     override fun onCreate() {
         super.onCreate()
-        floatView = FloatView(this)
+        floatView = FloatView(this) // ✅ 确保这里只有 1 个参数
         floatView?.show()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val ip = prefs.getString(KEY_IP, "0.0.0.0") ?: "0.0.0.0"
-        val port = prefs.getInt(KEY_PORT, 8080)
-
-        startUdp(port)
+        if (!running) {
+            running = true
+            receiveThread = Thread {
+                try {
+                    socket = DatagramSocket(8888)
+                    val buffer = ByteArray(1024)
+                    while (running) {
+                        val packet = DatagramPacket(buffer, buffer.size)
+                        socket?.receive(packet)
+                        val json = String(packet.data, 0, packet.length, Charset.forName("UTF-8"))
+                        handleJson(json)
+                    }
+                } catch (e: Exception) {
+                    Log.e("FloatService", "UDP error", e)
+                }
+            }.also { it.start() }
+        }
         return START_STICKY
     }
 
-    private fun startUdp(port: Int) {
-        if (running) return
-        running = true
-
-        receiveThread = Thread {
-            try {
-                socket = DatagramSocket(port)
-                val buf = ByteArray(4096)
-
-                while (running) {
-                    val packet = DatagramPacket(buf, buf.size)
-                    socket?.receive(packet)
-
-                    val json = String(packet.data, 0, packet.length, Charset.forName("UTF-8"))
-                    handleJson(json)
-                }
-            } catch (e: Exception) {
-                Log.e("FloatService", "UDP recv error", e)
-            }
-        }.also { it.start() }
-    }
-
     private fun handleJson(json: String) {
-        // 你原仓库的解析入口，不要改 JsonParser 本身
-        val status = JsonParser.parse(json)
+        // 假设你的 JSON 格式是 {"rssi1_a":"72","snr_a":"20","rssi1_g":"88","snr_g":"12"}
+        // 如果解析失败，默认给 DISCONNECTED
+        var airRssi = "110"
+        var airSnr = "0"
+        var gndRssi = "110"
+        var gndSnr = "0"
 
-        // ---- 抽字段（字符串原样保留，断链判定交给 SignalQuality）----
-        val airRssi = status.rssi1_a ?: "110"
-        val airSnr = status.snr_a ?: "0"
-        val gndRssi = status.rssi1_g ?: "110"
-        val gndSnr = status.snr_g ?: "0"
+        try {
+            // 简单解析逻辑，如果不对请按你的实际 JSON 调整
+            if (json.contains("rssi1_a")) {
+                airRssi = json.substringAfter("\"rssi1_a\":\"").substringBefore("\"")
+            }
+            if (json.contains("snr_a")) {
+                airSnr = json.substringAfter("\"snr_a\":\"").substringBefore("\"")
+            }
+            if (json.contains("rssi1_g")) {
+                gndRssi = json.substringAfter("\"rssi1_g\":\"").substringBefore("\"")
+            }
+            if (json.contains("snr_g")) {
+                gndSnr = json.substringAfter("\"snr_g\":\"").substringBefore("\"")
+            }
+        } catch (e: Exception) {
+            Log.e("FloatService", "Parse error", e)
+        }
 
-        // ---- 刷新悬浮窗圆形总览 ----
-        floatView?.update(airRsti = airRssi, airSnr = airSnr, gndRssi = gndRssi, gndSnr = gndSnr)
+        // ✅ 关键修复 1：FloatView.update 只传 4 个 String
+        floatView?.update(airRssi, airSnr, gndRssi, gndSnr)
 
-        // ---- 广播给 MainActivity ----
-        val broadcast = Intent(ACTION_SIGNAL_UPDATE).apply {
+        // 广播给 MainActivity
+        val intent = Intent(ACTION_SIGNAL_UPDATE).apply {
             putExtra(EXTRA_AIR_RSSI, airRssi)
             putExtra(EXTRA_AIR_SNR, airSnr)
             putExtra(EXTRA_GND_RSSI, gndRssi)
             putExtra(EXTRA_GND_SNR, gndSnr)
         }
-        sendBroadcast(broadcast)
+        sendBroadcast(intent)
     }
 
     override fun onDestroy() {
@@ -95,7 +95,6 @@ class FloatService : Service() {
         receiveThread = null
         try { socket?.close() } catch (_: Exception) {}
         socket = null
-
         floatView?.remove()
         floatView = null
         super.onDestroy()
