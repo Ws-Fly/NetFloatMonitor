@@ -1,10 +1,10 @@
 package com.example.netfloatmonitor
 
 import android.content.Context
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -23,18 +23,17 @@ class FloatView(
     private val params: WindowManager.LayoutParams
 ) : LinearLayout(context) {
 
-    // ── 展开态布局 ──
+    // ── 展开态 ──
     private val airLayout = LinearLayout(context)
     private val gndLayout = LinearLayout(context)
     private val chartContainer = LinearLayout(context)
     private val airChartView = WaveformView(context, isAir = true)
     private val gndChartView = WaveformView(context, isAir = false)
 
-    // ── 展开态信号格 ──
     private val airSignalBars = SignalBarsView(context)
     private val gndSignalBars = SignalBarsView(context)
 
-    // ── 折叠态：单个圆形信号格（总览） ──
+    // ── 折叠态圆形图标（总览信号） ──
     private val collapsedIcon = SignalBarsView(context).apply {
         setCircularMode(true)
     }
@@ -43,204 +42,199 @@ class FloatView(
     private var isExpanded = true
     private var lastExpandedWidth = 1300
     private var lastExpandedHeight = 540
-    private val collapsedSize = 100  // dp，圆形图标大小
+    private val collapsedSize = 100  // dp
 
-    // ── 拖动/缩放 ──
-    private var startWidth = 0
-    private var startHeight = 0
-    private var downX = 0f
-    private var downY = 0f
-    private var resize = false
-
-    // ── 展开态的容器 ──
+    // ── 展开态容器 ──
     private val topBar = LinearLayout(context)
     private val contentFrame = FrameLayout(context)
     private val contentPanel = LinearLayout(context)
 
     private val resizeIndicator = View(context).apply {
-        val triangleBg = GradientDrawable().apply {
-            setColor(Color.parseColor("#3498DB"))
-            cornerRadius = 4f
-        }
-        background = triangleBg
+        val g = GradientDrawable().apply { setColor(Color.parseColor("#3498DB")); cornerRadius = 4f }
+        background = g
         visibility = View.VISIBLE
     }
 
-    // × 关闭/折叠按钮
     private val toggleBtn = Button(context).apply {
         text = "×"
         textSize = 14f
         setTextColor(Color.WHITE)
         setGravity(Gravity.CENTER)
-        val btnBg = GradientDrawable().apply {
-            setColor(Color.parseColor("#C0392B"))
-            cornerRadius = 6f
-        }
-        background = btnBg
+        background = GradientDrawable().apply { setColor(Color.parseColor("#C0392B")); cornerRadius = 6f }
     }
 
-    // ── 缓存数值（供弹窗） ──
-    private var airRssi1Val: String = "--"
-    private var airRssi2Val: String = "--"
-    private var airSnrVal: String = "--"
-    private var gndRssi1Val: String = "--"
-    private var gndRssi2Val: String = "--"
-    private var gndSnrVal: String = "--"
+    // ── 缓存 ──
+    private var airRssi1Val = "--"; private var airRssi2Val = "--"; private var airSnrVal = "--"
+    private var gndRssi1Val = "--"; private var gndRssi2Val = "--"; private var gndSnrVal = "--"
+
+    // ── 长按检测 ──
+    private val longPressHandler = Handler(Looper.getMainLooper())
+    private var longPressPending = false
+    private val LONG_PRESS_DELAY = 500L
+
+    private val longPressRunnable = Runnable {
+        longPressPending = false
+        // 长按 → 弹窗（在折叠态）
+        if (!isExpanded) {
+            try {
+                collapsedIcon.showDetailPopup()
+            } catch (e: Exception) { /* ignore */ }
+        }
+    }
 
     init {
-        this.setOrientation(LinearLayout.VERTICAL)
-        this.setPadding(8, 6, 8, 8)
+        orientation = VERTICAL
+        setPadding(8, 6, 8, 8)
+        background = GradientDrawable().apply { setColor(Color.argb(180, 0, 0, 0)); cornerRadius = 10f }
 
-        val bg = GradientDrawable()
-        bg.setColor(Color.argb(180, 0, 0, 0))
-        bg.cornerRadius = 10f
-        this.setBackground(bg)
-
-        // ── 顶部栏（× 按钮） ──
-        topBar.setOrientation(LinearLayout.HORIZONTAL)
-        topBar.setGravity(Gravity.RIGHT or Gravity.CENTER_VERTICAL)
+        // 顶部栏
+        topBar.orientation = HORIZONTAL
+        topBar.gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
         topBar.setPadding(0, 0, 4, 4)
-        val btnLp = LinearLayout.LayoutParams(45, 45)
-        topBar.addView(toggleBtn, btnLp)
+        topBar.addView(toggleBtn, LinearLayout.LayoutParams(45, 45))
         addView(topBar)
 
-        // ── 内容面板 ──
-        contentPanel.setOrientation(LinearLayout.HORIZONTAL)
-        airLayout.setOrientation(LinearLayout.VERTICAL)
-        gndLayout.setOrientation(LinearLayout.VERTICAL)
+        // 内容面板
+        contentPanel.orientation = HORIZONTAL
+        airLayout.orientation = VERTICAL
+        gndLayout.orientation = VERTICAL
 
         airSignalBars.setLabel("AIR")
-        val airBarLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { setMargins(0, 0, 0, 6) }
-        airLayout.addView(airSignalBars, airBarLp)
+        airLayout.addView(airSignalBars, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { setMargins(0, 0, 0, 6) })
 
         gndSignalBars.setLabel("GND")
-        val gndBarLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { setMargins(0, 0, 0, 6) }
-        gndLayout.addView(gndSignalBars, gndBarLp)
+        gndLayout.addView(gndSignalBars, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { setMargins(0, 0, 0, 6) })
 
         contentPanel.addView(createPanel(airLayout))
         contentPanel.addView(createPanel(gndLayout))
 
-        chartContainer.setOrientation(LinearLayout.VERTICAL)
-        val airChartLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
-            setMargins(0, 0, 0, 8)
-        }
-        val gndChartLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
-        chartContainer.addView(airChartView, airChartLp)
-        chartContainer.addView(gndChartView, gndChartLp)
-
-        val chartContainerLp = LinearLayout.LayoutParams(700, LinearLayout.LayoutParams.MATCH_PARENT).apply {
-            setMargins(12, 0, 4, 0)
-        }
-        contentPanel.addView(chartContainer, chartContainerLp)
+        chartContainer.orientation = VERTICAL
+        chartContainer.addView(airChartView, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply { setMargins(0, 0, 0, 8) })
+        chartContainer.addView(gndChartView, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        contentPanel.addView(chartContainer, LinearLayout.LayoutParams(
+            700, LinearLayout.LayoutParams.MATCH_PARENT).apply { setMargins(12, 0, 4, 0) })
 
         contentFrame.addView(contentPanel, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        contentFrame.addView(resizeIndicator, FrameLayout.LayoutParams(15, 15).apply {
+            gravity = Gravity.BOTTOM or Gravity.RIGHT; setMargins(0, 0, 4, 4)
+        })
 
-        val indicatorLp = FrameLayout.LayoutParams(15, 15).apply {
-            gravity = Gravity.BOTTOM or Gravity.RIGHT
-            setMargins(0, 0, 4, 4)
-        }
-        contentFrame.addView(resizeIndicator, indicatorLp)
-
-        // ── 折叠态圆形图标（初始隐藏） ──
+        // 折叠态圆形图标（初始隐藏）
         collapsedIcon.visibility = View.GONE
-        val collapsedLp = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ).apply { gravity = Gravity.CENTER }
-        contentFrame.addView(collapsedIcon, collapsedLp)
+        contentFrame.addView(collapsedIcon, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+        ).apply { gravity = Gravity.CENTER })
 
-        val frameLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.MATCH_PARENT
-        )
-        addView(contentFrame, frameLp)
+        addView(contentFrame, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT))
 
-        // 初始信号格状态
         airSignalBars.setQuality(SignalQuality.BAD)
         gndSignalBars.setQuality(SignalQuality.BAD)
         collapsedIcon.setQuality(SignalQuality.BAD)
 
-        // ── ★ 折叠态圆形图标：点击展开 ★ ──
-        collapsedIcon.setOnClickListener {
-            if (!isExpanded) performToggle()
-        }
-        // 也支持长按弹窗（总览详情）
-        collapsedIcon.setOnLongClickListener {
-            true // 交给 SignalBarsView 内部弹窗处理
-        }
-
         // ── × 按钮：点击折叠 ──
-        toggleBtn.setOnClickListener {
-            if (isExpanded) performToggle()
-        }
+        toggleBtn.setOnClickListener { if (isExpanded) performToggle() }
 
-        // ── 整体拖动（展开态） / 拖动（折叠态） ──
-        setOnTouchListener(object : OnTouchListener {
-            private var isDragging = false
-            private var dragStartRawX = 0f
-            private var dragStartRawY = 0f
+        // ── ★ 圆形图标：触摸监听（单击展开 / 长按弹窗 / 拖动） ──
+        collapsedIcon.setOnTouchListener(object : OnTouchListener {
+            private var downRawX = 0f
+            private var downRawY = 0f
+            private var downTime = 0L
+            private var dragging = false
+            private var paramDownX = 0
+            private var paramDownY = 0
 
-            override fun onTouch(v: View?, event: MotionEvent): Boolean {
-                when (event.action) {
+            override fun onTouch(v: View?, ev: MotionEvent): Boolean {
+                if (isExpanded) return false
+
+                when (ev.action) {
                     MotionEvent.ACTION_DOWN -> {
-                        downX = event.rawX
-                        downY = event.rawY
-                        dragStartRawX = event.rawX
-                        dragStartRawY = event.rawY
-                        startWidth = width
-                        startHeight = height
-                        resize = isExpanded && (event.x > (width - 120)) && (event.y > (height - 120))
-                        isDragging = false
+                        downRawX = ev.rawX
+                        downRawY = ev.rawY
+                        downTime = System.currentTimeMillis()
+                        dragging = false
+                        paramDownX = params.x
+                        paramDownY = params.y
+                        // 启动长按检测
+                        longPressPending = true
+                        longPressHandler.postDelayed(longPressRunnable, LONG_PRESS_DELAY)
+                        return true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        val dx = event.rawX - dragStartRawX
-                        val dy = event.rawY - dragStartRawY
-                        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) isDragging = true
-
-                        val location = IntArray(2)
-                        this@FloatView.getLocationOnScreen(location)
-                        val absoluteY = location[1]
-                        val navBarHeight = getNavigationBarHeight()
-                        val usableScreenHeight = getScreenHeight() - navBarHeight
-
-                        if (isExpanded && resize) {
-                            // 展开态右下角缩放
-                            val newWidth = (startWidth + event.rawX - downX).toInt().coerceAtLeast(500)
-                            var newHeight = (startHeight + event.rawY - downY).toInt().coerceAtLeast(200)
-                            if (absoluteY + newHeight > usableScreenHeight) {
-                                newHeight = usableScreenHeight - absoluteY
-                            }
-                            params.width = newWidth
-                            params.height = newHeight
-                            lastExpandedWidth = newWidth
-                            lastExpandedHeight = newHeight
-                        } else if (isDragging) {
-                            // 拖动整个悬浮窗
-                            params.x += (event.rawX - downX).toInt()
-                            var targetY = params.y + (event.rawY - downY).toInt()
-                            if (targetY + height > usableScreenHeight) {
-                                targetY = usableScreenHeight - height
-                            }
-                            params.y = targetY
-                            downX = event.rawX
-                            downY = event.rawY
+                        val dx = ev.rawX - downRawX
+                        val dy = ev.rawY - downRawY
+                        if (!dragging && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+                            dragging = true
+                            // 开始拖动 → 取消长按
+                            longPressHandler.removeCallbacks(longPressRunnable)
+                            longPressPending = false
                         }
-                        windowManager.updateViewLayout(this@FloatView, params)
+                        if (dragging) {
+                            params.x = paramDownX + dx.toInt()
+                            params.y = paramDownY + dy.toInt()
+                            // 限制不超出屏幕
+                            val maxY = getScreenHeight() - getNavigationBarHeight() - height
+                            if (params.y > maxY) params.y = maxY
+                            if (params.y < 0) params.y = 0
+                            windowManager.updateViewLayout(this@FloatView, params)
+                        }
+                        return true
                     }
-                    MotionEvent.ACTION_UP -> {
-                        // 折叠态单击（非拖动）→ 展开
-                        if (!isExpanded && !isDragging) {
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        longPressHandler.removeCallbacks(longPressRunnable)
+                        val wasLongPress = !longPressPending && !dragging
+                        val duration = System.currentTimeMillis() - downTime
+                        longPressPending = false
+
+                        if (!dragging && duration < LONG_PRESS_DELAY + 100) {
+                            // 单击 → 展开
                             performToggle()
                         }
+                        return true
+                    }
+                }
+                return true
+            }
+        })
+
+        // ── 展开态：整体拖动 + 缩放 ──
+        setOnTouchListener(object : OnTouchListener {
+            private var startW = 0; private var startH = 0
+            private var downX2 = 0f; private var downY2 = 0f
+            private var resizing = false
+
+            override fun onTouch(v: View?, ev: MotionEvent): Boolean {
+                if (!isExpanded) return false
+                when (ev.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        downX2 = ev.rawX; downY2 = ev.rawY
+                        startW = width; startH = height
+                        resizing = (ev.x > (width - 120)) && (ev.y > (height - 120))
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (resizing) {
+                            val nw = (startW + ev.rawX - downX2).toInt().coerceAtLeast(500)
+                            var nh = (startH + ev.rawY - downY2).toInt().coerceAtLeast(200)
+                            val maxY = getScreenHeight() - getNavigationBarHeight()
+                            if (getLocationY() + nh > maxY) nh = maxY - getLocationY()
+                            params.width = nw; params.height = nh
+                            lastExpandedWidth = nw; lastExpandedHeight = nh
+                        } else {
+                            params.x += (ev.rawX - downX2).toInt()
+                            var ty = params.y + (ev.rawY - downY2).toInt()
+                            val maxY = getScreenHeight() - getNavigationBarHeight() - height
+                            if (ty > maxY) ty = maxY
+                            params.y = ty
+                            downX2 = ev.rawX; downY2 = ev.rawY
+                        }
+                        windowManager.updateViewLayout(this@FloatView, params)
                     }
                 }
                 return true
@@ -248,79 +242,59 @@ class FloatView(
         })
     }
 
+    // ── 辅助 ──
+    private fun getLocationY(): Int {
+        val loc = IntArray(2)
+        getLocationOnScreen(loc)
+        return loc[1]
+    }
+
     private fun getNavigationBarHeight(): Int {
-        val resourceId = context.resources.getIdentifier("navigation_bar_height", "dimen", "android")
-        return if (resourceId > 0) {
-            context.resources.getDimensionPixelSize(resourceId)
-        } else {
-            0
-        }
+        val id = context.resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        return if (id > 0) context.resources.getDimensionPixelSize(id) else 0
     }
 
-    private fun getScreenHeight(): Int {
-        return context.resources.displayMetrics.heightPixels
-    }
+    private fun getScreenHeight(): Int = context.resources.displayMetrics.heightPixels
 
-    /**
-     * 折叠 ↔ 展开 切换
-     */
+    // ── 折叠 ↔ 展开 ──
     private fun performToggle() {
         if (isExpanded) {
-            // ═══ 展开 → 折叠 ═══
             isExpanded = false
-
-            // 隐藏展开态所有内容
             topBar.visibility = View.GONE
             contentPanel.visibility = View.GONE
             resizeIndicator.visibility = View.GONE
-
-            // 显示圆形图标
             collapsedIcon.visibility = View.VISIBLE
-
-            // 去掉背景，只留圆形图标本身
-            this.setBackground(null)
-            this.setPadding(0, 0, 0, 0)
-
-            // 窗口缩为正方形小图标
+            background = null
+            setPadding(0, 0, 0, 0)
             params.width = collapsedSize
             params.height = collapsedSize
         } else {
-            // ═══ 折叠 → 展开 ═══
             isExpanded = true
-
-            // 恢复展开态
             topBar.visibility = View.VISIBLE
             contentPanel.visibility = View.VISIBLE
             resizeIndicator.visibility = View.VISIBLE
             collapsedIcon.visibility = View.GONE
-
-            // 恢复背景
-            val panelBg = GradientDrawable()
-            panelBg.setColor(Color.argb(180, 0, 0, 0))
-            panelBg.cornerRadius = 10f
-            this.setBackground(panelBg)
-            this.setPadding(8, 6, 8, 8)
-
-            // 恢复窗口尺寸
+            val bg = GradientDrawable()
+            bg.setColor(Color.argb(180, 0, 0, 0))
+            bg.cornerRadius = 10f
+            background = bg
+            setPadding(8, 6, 8, 8)
             params.width = lastExpandedWidth
             params.height = lastExpandedHeight
         }
         windowManager.updateViewLayout(this@FloatView, params)
     }
 
-    private fun createPanel(containerLayout: LinearLayout): View {
+    private fun createPanel(container: LinearLayout): View {
         val box = LinearLayout(context)
-        box.setOrientation(LinearLayout.VERTICAL)
-
+        box.orientation = VERTICAL
         val scroll = ScrollView(context)
-        scroll.addView(containerLayout)
-
-        val lp = LinearLayout.LayoutParams(300, LinearLayout.LayoutParams.MATCH_PARENT)
-        box.addView(scroll, lp)
+        scroll.addView(container)
+        box.addView(scroll, LinearLayout.LayoutParams(300, LinearLayout.LayoutParams.MATCH_PARENT))
         return box
     }
 
-    // ── JSON 数据刷新 ──
+    // ── JSON 刷新 ──
     fun updateJson(json: String) {
         try {
             if (json.isBlank()) return
@@ -328,198 +302,129 @@ class FloatView(
 
             airLayout.removeAllViews()
             gndLayout.removeAllViews()
-
-            // 重新插入信号格
             airSignalBars.setLabel("AIR")
             gndSignalBars.setLabel("GND")
-            val airBarLp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, 6) }
-            val gndBarLp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, 6) }
-            airLayout.addView(airSignalBars, airBarLp)
-            gndLayout.addView(gndSignalBars, gndBarLp)
+            airLayout.addView(airSignalBars, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, 6) })
+            gndLayout.addView(gndSignalBars, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, 6) })
 
-            var airRssi1: Float? = null
-            var airRssi2: Float? = null
-            var airSnr: Float? = null
-            var gndRssi1: Float? = null
-            var gndRssi2: Float? = null
-            var gndSnr: Float? = null
-
-            var airRssi1Str = ""
-            var airRssi2Str = ""
-            var airSnrStr = ""
-            var gndRssi1Str = ""
-            var gndRssi2Str = ""
-            var gndSnrStr = ""
+            var aR1: Float? = null; var aR2: Float? = null; var aSnr: Float? = null
+            var gR1: Float? = null; var gR2: Float? = null; var gSnr: Float? = null
+            var aR1s = ""; var aR2s = ""; var aSnrs = ""
+            var gR1s = ""; var gR2s = ""; var gSnrs = ""
 
             obj.keys().forEach { key ->
-                val valueStr = obj.get(key).toString()
-                val lowerKey = key.lowercase()
-                val numValue = valueStr.toFloatOrNull()?.let { Math.abs(it) }
-
-                if (numValue != null) {
+                val vs = obj.get(key).toString()
+                val lk = key.lowercase()
+                val nv = vs.toFloatOrNull()?.let { Math.abs(it) }
+                if (nv != null) {
                     when {
-                        lowerKey.endsWith("_a") -> {
-                            when {
-                                lowerKey.contains("rssi1") -> { airRssi1 = numValue; airRssi1Str = valueStr }
-                                lowerKey.contains("rssi2") -> { airRssi2 = numValue; airRssi2Str = valueStr }
-                                lowerKey.contains("rssi") && airRssi1 == null -> { airRssi1 = numValue; airRssi1Str = valueStr }
-                                lowerKey.contains("snr") -> { airSnr = numValue; airSnrStr = valueStr }
-                            }
+                        lk.endsWith("_a") -> when {
+                            lk.contains("rssi1") -> { aR1 = nv; aR1s = vs }
+                            lk.contains("rssi2") -> { aR2 = nv; aR2s = vs }
+                            lk.contains("rssi") && aR1 == null -> { aR1 = nv; aR1s = vs }
+                            lk.contains("snr") -> { aSnr = nv; aSnrs = vs }
                         }
-                        lowerKey.endsWith("_g") -> {
-                            when {
-                                lowerKey.contains("rssi1") -> { gndRssi1 = numValue; gndRssi1Str = valueStr }
-                                lowerKey.contains("rssi2") -> { gndRssi2 = numValue; gndRssi2Str = valueStr }
-                                lowerKey.contains("rssi") && gndRssi1 == null -> { gndRssi1 = numValue; gndRssi1Str = valueStr }
-                                lowerKey.contains("snr") -> { gndSnr = numValue; gndSnrStr = valueStr }
-                            }
+                        lk.endsWith("_g") -> when {
+                            lk.contains("rssi1") -> { gR1 = nv; gR1s = vs }
+                            lk.contains("rssi2") -> { gR2 = nv; gR2s = vs }
+                            lk.contains("rssi") && gR1 == null -> { gR1 = nv; gR1s = vs }
+                            lk.contains("snr") -> { gSnr = nv; gSnrs = vs }
                         }
-                        lowerKey.contains("air_rssi1") -> { airRssi1 = numValue; airRssi1Str = valueStr }
-                        lowerKey.contains("air_rssi2") -> { airRssi2 = numValue; airRssi2Str = valueStr }
-                        lowerKey.contains("air_snr") -> { airSnr = numValue; airSnrStr = valueStr }
-                        lowerKey.contains("gnd_rssi1") -> { gndRssi1 = numValue; gndRssi1Str = valueStr }
-                        lowerKey.contains("gnd_rssi2") -> { gndRssi2 = numValue; gndRssi2Str = valueStr }
-                        lowerKey.contains("gnd_snr") -> { gndSnr = numValue; gndSnrStr = valueStr }
+                        lk.contains("air_rssi1") -> { aR1 = nv; aR1s = vs }
+                        lk.contains("air_rssi2") -> { aR2 = nv; aR2s = vs }
+                        lk.contains("air_snr") -> { aSnr = nv; aSnrs = vs }
+                        lk.contains("gnd_rssi1") -> { gR1 = nv; gR1s = vs }
+                        lk.contains("gnd_rssi2") -> { gR2 = nv; gR2s = vs }
+                        lk.contains("gnd_snr") -> { gSnr = nv; gSnrs = vs }
                     }
                 }
-
                 when {
-                    key.endsWith("_g") -> addItem(gndLayout, key, valueStr)
-                    key.endsWith("_a") -> addItem(airLayout, key, valueStr)
-                    else -> addItem(airLayout, key, valueStr)
+                    key.endsWith("_g") -> addItem(gndLayout, key, vs)
+                    key.endsWith("_a") -> addItem(airLayout, key, vs)
+                    else -> addItem(airLayout, key, vs)
                 }
             }
 
-            // ── 断链判定 ──
-            val airDisconnected = airSnrStr == "0" || airRssi1Str == "110" || airRssi2Str == "110"
-            val gndDisconnected = gndSnrStr == "0" || gndRssi1Str == "110" || gndRssi2Str == "110"
+            val aDisc = aSnrs == "0" || aR1s == "110" || aR2s == "110"
+            val gDisc = gSnrs == "0" || gR1s == "110" || gR2s == "110"
+            val aR = aR1 ?: aR2; val gR = gR1 ?: gR2
+            val aQ = if (aDisc) SignalQuality.DISCONNECTED else SignalQuality.fromRssiSnr(aR, aSnr, true)
+            val gQ = if (gDisc) SignalQuality.DISCONNECTED else SignalQuality.fromRssiSnr(gR, gSnr, true)
 
-            val airRssi = airRssi1 ?: airRssi2
-            val gndRssi = gndRssi1 ?: gndRssi2
+            airSignalBars.setQuality(aQ)
+            gndSignalBars.setQuality(gQ)
 
-            val airQ = if (airDisconnected) SignalQuality.DISCONNECTED
-                       else SignalQuality.fromRssiSnr(airRssi, airSnr, hasSnrData = true)
-            val gndQ = if (gndDisconnected) SignalQuality.DISCONNECTED
-                       else SignalQuality.fromRssiSnr(gndRssi, gndSnr, hasSnrData = true)
-
-            // ── 展开态信号格 ──
-            airSignalBars.setQuality(airQ)
-            gndSignalBars.setQuality(gndQ)
-
-            // ── 折叠态圆形图标 = 总览（取较差值） ──
-            val overallQ = SignalQuality.worse(airQ, gndQ)
+            val overallQ = SignalQuality.worse(aQ, gQ)
             collapsedIcon.setQuality(overallQ)
             collapsedIcon.setLabel("总览")
 
-            // 弹窗数据
             airSignalBars.setDetailValues(
-                if (airDisconnected) "断链" else (airRssi1?.toInt()?.toString() ?: "--"),
-                if (airDisconnected) "断链" else (airRssi2?.toInt()?.toString() ?: "--"),
-                if (airDisconnected) "断链" else (airSnr?.toInt()?.toString() ?: "--")
+                "AIR rssi1=${aR1?.toInt() ?: "--"}",
+                "AIR rssi2=${aR2?.toInt() ?: "--"}",
+                "AIR snr=${aSnr?.toInt() ?: "--"} (${aQ.label})"
             )
             gndSignalBars.setDetailValues(
-                if (gndDisconnected) "断链" else (gndRssi1?.toInt()?.toString() ?: "--"),
-                if (gndDisconnected) "断链" else (gndRssi2?.toInt()?.toString() ?: "--"),
-                if (gndDisconnected) "断链" else (gndSnr?.toInt()?.toString() ?: "--")
+                "GND rssi1=${gR1?.toInt() ?: "--"}",
+                "GND rssi2=${gR2?.toInt() ?: "--"}",
+                "GND snr=${gSnr?.toInt() ?: "--"} (${gQ.label})"
             )
             collapsedIcon.setDetailValues(
-                "AIR: rssi1=${airRssi1?.toInt() ?: "--"} rssi2=${airRssi2?.toInt() ?: "--"} snr=${airSnr?.toInt() ?: "--"}",
-                "GND: rssi1=${gndRssi1?.toInt() ?: "--"} rssi2=${gndRssi2?.toInt() ?: "--"} snr=${gndSnr?.toInt() ?: "--"}",
-                "总览: ${overallQ.label} (${overallQ.bars}格)"
+                "AIR: rssi1=${aR1?.toInt() ?: "--"} rssi2=${aR2?.toInt() ?: "--"} snr=${aSnr?.toInt() ?: "--"}",
+                "GND: rssi1=${gR1?.toInt() ?: "--"} rssi2=${gR2?.toInt() ?: "--"} snr=${gSnr?.toInt() ?: "--"}",
+                "总览: ${overallQ.label} ${overallQ.bars}/5"
             )
 
-            // 缓存
-            airRssi1Val = airRssi1?.toInt()?.toString() ?: "--"
-            airRssi2Val = airRssi2?.toInt()?.toString() ?: "--"
-            airSnrVal = airSnr?.toInt()?.toString() ?: "--"
-            gndRssi1Val = gndRssi1?.toInt()?.toString() ?: "--"
-            gndRssi2Val = gndRssi2?.toInt()?.toString() ?: "--"
-            gndSnrVal = gndSnr?.toInt()?.toString() ?: "--"
+            airRssi1Val = aR1?.toInt()?.toString() ?: "--"
+            airRssi2Val = aR2?.toInt()?.toString() ?: "--"
+            airSnrVal = aSnr?.toInt()?.toString() ?: "--"
+            gndRssi1Val = gR1?.toInt()?.toString() ?: "--"
+            gndRssi2Val = gR2?.toInt()?.toString() ?: "--"
+            gndSnrVal = gSnr?.toInt()?.toString() ?: "--"
 
-            airChartView.addData(airRssi1, airRssi2, airSnr)
-            gndChartView.addData(gndRssi1, gndRssi2, gndSnr)
-
+            airChartView.addData(aR1, aR2, aSnr)
+            gndChartView.addData(gR1, gR2, gSnr)
         } catch (e: Exception) {
-            airLayout.removeAllViews()
-            gndLayout.removeAllViews()
-            addItem(airLayout, "JSON_ERROR", e.message ?: "Unknown Error")
+            airLayout.removeAllViews(); gndLayout.removeAllViews()
+            addItem(airLayout, "JSON_ERROR", e.message ?: "Unknown")
         }
     }
 
     private fun addItem(layout: LinearLayout, key: String, value: String) {
         val tv = TextView(context)
         tv.text = "$key : $value"
-        tv.textSize = 12f
-        tv.setTextColor(Color.WHITE)
+        tv.textSize = 12f; tv.setTextColor(Color.WHITE)
         tv.setPadding(4, 3, 4, 3)
         layout.addView(tv)
     }
 
-    // ──────────────────────────────────────────────
-    // 内嵌波形图
-    // ──────────────────────────────────────────────
-    private class WaveformView(
-        context: Context,
-        private val isAir: Boolean = false
-    ) : View(context) {
-        private val maxDataPoints = 100
-        private val yAxisWidth = 85f
-
-        private val rssi1List = LinkedList<Float>()
-        private val rssi2List = LinkedList<Float>()
-        private val snrList = LinkedList<Float>()
-
-        private val axisTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#BDC3C7"); textSize = 16f
-        }
-
-        private val colorRssi1 = Color.parseColor("#2980B9")
-        private val colorRssi2 = Color.parseColor("#3498DB")
-        private val colorSnr = Color.parseColor("#2ECC71")
-
-        private val paintRssi1 = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = colorRssi1; strokeWidth = 4f; style = Paint.Style.STROKE
-        }
-        private val paintRssi2 = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = colorRssi2; strokeWidth = 3f; style = Paint.Style.STROKE
-        }
-        private val paintSnr = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = colorSnr; strokeWidth = 3f; style = Paint.Style.STROKE
-        }
-
-        private val paintTextRssi1 = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = colorRssi1; textSize = 18f
-        }
-        private val paintTextRssi2 = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = colorRssi2; textSize = 18f
-        }
-        private val paintTextSnr = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = colorSnr; textSize = 18f
-        }
-
-        private val gridPaint = Paint().apply {
-            color = Color.argb(45, 255, 255, 255); strokeWidth = 1f
-        }
-        private val bgPaint = Paint().apply {
-            color = Color.argb(30, 255, 255, 255)
-        }
-
-        private val rssiMin = 0f; private val rssiMax = 120f
-        private val snrMin = 0f; private val snrMax = 50f
+    // ──────────────────────────────────────
+    // 波形图
+    // ──────────────────────────────────────
+    private class WaveformView(context: Context, private val isAir: Boolean = false) : View(context) {
+        private val maxPts = 100; private val yAxisW = 85f
+        private val r1L = LinkedList<Float>(); private val r2L = LinkedList<Float>(); private val sL = LinkedList<Float>()
+        private val c1 = Color.parseColor("#2980B9"); private val c2 = Color.parseColor("#3498DB"); private val c3 = Color.parseColor("#2ECC71")
+        private val p1 = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c1; strokeWidth = 4f; style = Paint.Style.STROKE }
+        private val p2 = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c2; strokeWidth = 3f; style = Paint.Style.STROKE }
+        private val p3 = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c3; strokeWidth = 3f; style = Paint.Style.STROKE }
+        private val t1 = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c1; textSize = 18f }
+        private val t2 = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c2; textSize = 18f }
+        private val t3 = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c3; textSize = 18f }
+        private val ax = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#BDC3C7"); textSize = 16f }
+        private val gp = Paint().apply { color = Color.argb(45,255,255,255); strokeWidth = 1f }
+        private val bp = Paint().apply { color = Color.argb(30,255,255,255) }
 
         fun addData(r1: Float?, r2: Float?, snr: Float?) {
-            rssi1List.addLast(r1 ?: rssi1List.lastOrNull() ?: 0f)
-            rssi2List.addLast(r2 ?: rssi2List.lastOrNull() ?: 0f)
-            snrList.addLast(snr ?: snrList.lastOrNull() ?: 0f)
-            if (rssi1List.size > maxDataPoints) rssi1List.removeFirst()
-            if (rssi2List.size > maxDataPoints) rssi2List.removeFirst()
-            if (snrList.size > maxDataPoints) snrList.removeFirst()
+            r1L.addLast(r1 ?: r1L.lastOrNull() ?: 0f)
+            r2L.addLast(r2 ?: r2L.lastOrNull() ?: 0f)
+            sL.addLast(snr ?: sL.lastOrNull() ?: 0f)
+            if (r1L.size > maxPts) r1L.removeFirst()
+            if (r2L.size > maxPts) r2L.removeFirst()
+            if (sL.size > maxPts) sL.removeFirst()
             postInvalidate()
         }
 
@@ -527,48 +432,25 @@ class FloatView(
             super.onDraw(canvas)
             val w = width.toFloat(); val h = height.toFloat()
             if (w <= 0 || h <= 0) return
-
-            canvas.drawRect(0f, 0f, w, h, bgPaint)
-
-            for (i in 0..4) {
-                val y = h * i / 4f
-                canvas.drawLine(yAxisWidth, y, w, y, gridPaint)
-            }
-
-            canvas.drawText("120", 8f, 18f, axisTextPaint)
-            canvas.drawText("0", 28f, h - 8f, axisTextPaint)
-            canvas.drawText("50", w - 40f, 18f, axisTextPaint)
-
-            var dashY = 28f
-            canvas.drawText("rssi1", 50f, dashY, paintTextRssi1); dashY += 22f
-            canvas.drawText("rssi2", 50f, dashY, paintTextRssi2); dashY += 22f
-            canvas.drawText("snr", 50f, dashY, paintTextSnr)
-
-            val chartW = w - yAxisWidth - 10f
-            val chartLeft = yAxisWidth + 5f
-
-            drawLine(canvas, rssi1List, rssiMin, rssiMax, chartLeft, chartW, h, paintRssi1)
-            drawLine(canvas, rssi2List, rssiMin, rssiMax, chartLeft, chartW, h, paintRssi2)
-            drawLine(canvas, snrList, snrMin, snrMax, chartLeft, chartW, h, paintSnr)
+            canvas.drawRect(0f, 0f, w, h, bp)
+            for (i in 0..4) { val y = h * i / 4f; canvas.drawLine(yAxisW, y, w, y, gp) }
+            canvas.drawText("120", 8f, 18f, ax); canvas.drawText("0", 28f, h-8f, ax); canvas.drawText("50", w-40f, 18f, ax)
+            var dy = 28f
+            canvas.drawText("rssi1", 50f, dy, t1); dy += 22f
+            canvas.drawText("rssi2", 50f, dy, t2); dy += 22f
+            canvas.drawText("snr", 50f, dy, t3)
+            val cW = w - yAxisW - 10f; val cL = yAxisW + 5f
+            drawLine(canvas, r1L, 0f, 120f, cL, cW, h, p1)
+            drawLine(canvas, r2L, 0f, 120f, cL, cW, h, p2)
+            drawLine(canvas, sL, 0f, 50f, cL, cW, h, p3)
         }
 
-        private fun drawLine(
-            canvas: Canvas, list: LinkedList<Float>,
-            minVal: Float, maxVal: Float,
-            leftOffset: Float, cWidth: Float, h: Float, paint: Paint
-        ) {
+        private fun drawLine(canvas: Canvas, list: LinkedList<Float>, mn: Float, mx: Float, lo: Float, cW: Float, h: Float, pt: Paint) {
             if (list.size < 2) return
-            val range = maxVal - minVal
-            val stepX = if (list.size > 1) cWidth / (maxDataPoints - 1) else 0f
-
+            val range = mx - mn; val step = if (list.size > 1) cW / (maxPts - 1) else 0f
             for (i in 1 until list.size) {
-                val v0 = list[i - 1].coerceIn(minVal, maxVal)
-                val v1 = list[i].coerceIn(minVal, maxVal)
-                val x0 = leftOffset + (i - 1) * stepX
-                val x1 = leftOffset + i * stepX
-                val y0 = h - ((v0 - minVal) / range) * h
-                val y1 = h - ((v1 - minVal) / range) * h
-                canvas.drawLine(x0, y0, x1, y1, paint)
+                val v0 = list[i-1].coerceIn(mn, mx); val v1 = list[i].coerceIn(mn, mx)
+                canvas.drawLine(lo+(i-1)*step, h-((v0-mn)/range)*h, lo+i*step, h-((v1-mn)/range)*h, pt)
             }
         }
     }
