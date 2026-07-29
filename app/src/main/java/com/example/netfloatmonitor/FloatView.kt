@@ -19,21 +19,21 @@ class FloatView(context: Context) : LinearLayout(context) {
         icon.setSignalQuality(SignalQuality.DISCONNECTED)
     }
 
-    fun update(airRssi: String, airSnr: String, gndRssi: String, gndSnr: String) {
-        val air = SignalQuality.fromRawStrings(airRssi, airSnr)
-        val gnd = SignalQuality.fromRawStrings(gndRssi, gndSnr)
-        val total = SignalQuality.worse(air, gnd)
+    /**
+     * ✅ 所有数据都从参数进来
+     * ✅ 不访问任何成员变量
+     */
+    fun update(
+        airRssi: String,
+        airSnr: String,
+        gndRssi: String,
+        gndSnr: String
+    ) {
+        val airQ = SignalQuality.fromRawStrings(airRssi, airSnr)
+        val gndQ = SignalQuality.fromRawStrings(gndRssi, gndSnr)
+        val totalQ = SignalQuality.worse(airQ, gndQ)
 
-        icon.setSignalQuality(total)
-    }
-
-    fun show() {
-        // 如果 WindowManager 添加逻辑在这里，可以留空
-        // 实际添加由 FloatService 控制
-    }
-
-    fun remove() {
-        // 移除逻辑由 FloatService 控制
+        icon.setSignalQuality(totalQ)
     }
 
     fun showDetail() {
