@@ -31,15 +31,19 @@ class FloatView(
     private val airChartView = WaveformView(context, isAir = true)
     private val gndChartView = WaveformView(context, isAir = false)
 
-    // ── 信号格（AIR / GND / 折叠态） ──
+    // ── 信号格（AIR / GND / 折叠态圆形图标） ──
     private val airSignalBars = SignalBarsView(context)
     private val gndSignalBars = SignalBarsView(context)
-    private val collapsedSignalView = SignalBarsView(context)
+
+    // 折叠态：圆形图标里画信号格
+    private val collapsedCircleView = SignalBarsView(context).apply {
+        setCircularMode(true)
+    }
 
     private var isExpanded = true
     private var lastExpandedWidth = 1300
     private var lastExpandedHeight = 540
-    private val collapsedSize = 160
+    private val collapsedSize = 96   // 圆形图标 96dp，更紧凑
 
     private var startWidth = 0
     private var startHeight = 0
@@ -72,6 +76,14 @@ class FloatView(
         background = btnBg
     }
 
+    // ── 缓存最新数值（供弹窗和折叠态使用） ──
+    private var airRssi1Val: String = "--"
+    private var airRssi2Val: String = "--"
+    private var airSnrVal: String = "--"
+    private var gndRssi1Val: String = "--"
+    private var gndRssi2Val: String = "--"
+    private var gndSnrVal: String = "--"
+
     init {
         this.setOrientation(LinearLayout.VERTICAL)
         this.setPadding(8, 6, 8, 8)
@@ -93,7 +105,7 @@ class FloatView(
         airLayout.setOrientation(LinearLayout.VERTICAL)
         gndLayout.setOrientation(LinearLayout.VERTICAL)
 
-        // ── AIR 面板顶部插入信号格 ──
+        // ── AIR 面板顶部插入信号格（带点击弹窗） ──
         airSignalBars.setLabel("AIR")
         val airBarLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -109,8 +121,8 @@ class FloatView(
         ).apply { setMargins(0, 0, 0, 6) }
         gndLayout.addView(gndSignalBars, gndBarLp)
 
-        contentPanel.addView(createPanel("AIR", airLayout))
-        contentPanel.addView(createPanel("GND", gndLayout))
+        contentPanel.addView(createPanel(airLayout))
+        contentPanel.addView(createPanel(gndLayout))
 
         chartContainer.setOrientation(LinearLayout.VERTICAL)
         val airChartLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
@@ -136,14 +148,14 @@ class FloatView(
         }
         contentFrame.addView(resizeIndicator, indicatorLp)
 
-        // ── 折叠态：用信号格 View 覆盖整个区域 ──
-        collapsedSignalView.visibility = View.GONE
-        collapsedSignalView.setLabel("SIG")
+        // ── 折叠态：圆形信号格图标（居中覆盖整个区域） ──
+        collapsedCircleView.visibility = View.GONE
+        collapsedCircleView.setLabel("")
         val collapsedLp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ).apply { gravity = Gravity.CENTER }
-        contentFrame.addView(collapsedSignalView, collapsedLp)
+        contentFrame.addView(collapsedCircleView, collapsedLp)
 
         val frameLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -154,9 +166,9 @@ class FloatView(
         // 初始状态
         airSignalBars.setQuality(SignalQuality.BAD)
         gndSignalBars.setQuality(SignalQuality.BAD)
-        collapsedSignalView.setQuality(SignalQuality.BAD)
+        collapsedCircleView.setQuality(SignalQuality.BAD)
 
-        // ── 折叠按钮触摸 ──
+        // ── 折叠按钮触摸逻辑（保留原有） ──
         toggleBtn.setOnTouchListener(object : OnTouchListener {
             private var btnDownX = 0f
             private var btnDownY = 0f
@@ -198,7 +210,7 @@ class FloatView(
             if (isExpanded) performToggle()
         }
 
-        // ── 整体拖动 / 缩放 ──
+        // ── 整体拖动 / 缩放（保留原有） ──
         setOnTouchListener(object : OnTouchListener {
             override fun onTouch(v: View?, event: MotionEvent): Boolean {
                 when (event.action) {
@@ -257,15 +269,16 @@ class FloatView(
         return context.resources.displayMetrics.heightPixels
     }
 
+    // ── 折叠 / 展开（保留原有逻辑 + 圆形图标适配） ──
     private fun performToggle() {
         val panelBg = GradientDrawable()
 
         if (isExpanded) {
-            // → 折叠
+            // → 折叠：隐藏内容，显示圆形信号格图标
             isExpanded = false
-            contentFrame.visibility = View.GONE
+            contentPanel.visibility = View.GONE
             resizeIndicator.visibility = View.GONE
-            collapsedSignalView.visibility = View.VISIBLE
+            collapsedCircleView.visibility = View.VISIBLE
 
             val collapsedLp2 = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -287,11 +300,11 @@ class FloatView(
             params.width = collapsedSize
             params.height = collapsedSize
         } else {
-            // → 展开
+            // → 展开：恢复内容面板
             isExpanded = true
-            contentFrame.visibility = View.VISIBLE
+            contentPanel.visibility = View.VISIBLE
             resizeIndicator.visibility = View.VISIBLE
-            collapsedSignalView.visibility = View.GONE
+            collapsedCircleView.visibility = View.GONE
 
             val expandedLp = LinearLayout.LayoutParams(45, 45)
             toggleBtn.layoutParams = expandedLp
@@ -314,12 +327,9 @@ class FloatView(
         windowManager.updateViewLayout(this@FloatView, params)
     }
 
-    private fun createPanel(title: String, containerLayout: LinearLayout): View {
+    private fun createPanel(containerLayout: LinearLayout): View {
         val box = LinearLayout(context)
         box.setOrientation(LinearLayout.VERTICAL)
-
-        // 标题由信号格代替，不再需要单独的 titleView
-        // （信号格已经包含 "AIR"/"GND" 标签）
 
         val scroll = ScrollView(context)
         scroll.addView(containerLayout)
@@ -330,6 +340,7 @@ class FloatView(
         return box
     }
 
+    // ── JSON 数据刷新（核心） ──
     fun updateJson(json: String) {
         try {
             if (json.isBlank()) return
@@ -338,7 +349,7 @@ class FloatView(
             airLayout.removeAllViews()
             gndLayout.removeAllViews()
 
-            // 重新插入信号格（removeAllViews 会清掉）
+            // 重新插入信号格
             airSignalBars.setLabel("AIR")
             gndSignalBars.setLabel("GND")
             val airBarLp = LinearLayout.LayoutParams(
@@ -359,6 +370,14 @@ class FloatView(
             var gndRssi2: Float? = null
             var gndSnr: Float? = null
 
+            // 原始字符串（用于断链判定）
+            var airRssi1Str = ""
+            var airRssi2Str = ""
+            var airSnrStr = ""
+            var gndRssi1Str = ""
+            var gndRssi2Str = ""
+            var gndSnrStr = ""
+
             obj.keys().forEach { key ->
                 val valueStr = obj.get(key).toString()
                 val lowerKey = key.lowercase()
@@ -368,26 +387,26 @@ class FloatView(
                     when {
                         lowerKey.endsWith("_a") -> {
                             when {
-                                lowerKey.contains("rssi1") -> airRssi1 = numValue
-                                lowerKey.contains("rssi2") -> airRssi2 = numValue
-                                lowerKey.contains("rssi") && airRssi1 == null -> airRssi1 = numValue
-                                lowerKey.contains("snr") -> airSnr = numValue
+                                lowerKey.contains("rssi1") -> { airRssi1 = numValue; airRssi1Str = valueStr }
+                                lowerKey.contains("rssi2") -> { airRssi2 = numValue; airRssi2Str = valueStr }
+                                lowerKey.contains("rssi") && airRssi1 == null -> { airRssi1 = numValue; airRssi1Str = valueStr }
+                                lowerKey.contains("snr") -> { airSnr = numValue; airSnrStr = valueStr }
                             }
                         }
                         lowerKey.endsWith("_g") -> {
                             when {
-                                lowerKey.contains("rssi1") -> gndRssi1 = numValue
-                                lowerKey.contains("rssi2") -> gndRssi2 = numValue
-                                lowerKey.contains("rssi") && gndRssi1 == null -> gndRssi1 = numValue
-                                lowerKey.contains("snr") -> gndSnr = numValue
+                                lowerKey.contains("rssi1") -> { gndRssi1 = numValue; gndRssi1Str = valueStr }
+                                lowerKey.contains("rssi2") -> { gndRssi2 = numValue; gndRssi2Str = valueStr }
+                                lowerKey.contains("rssi") && gndRssi1 == null -> { gndRssi1 = numValue; gndRssi1Str = valueStr }
+                                lowerKey.contains("snr") -> { gndSnr = numValue; gndSnrStr = valueStr }
                             }
                         }
-                        lowerKey.contains("air_rssi1") -> airRssi1 = numValue
-                        lowerKey.contains("air_rssi2") -> airRssi2 = numValue
-                        lowerKey.contains("air_snr") -> airSnr = numValue
-                        lowerKey.contains("gnd_rssi1") -> gndRssi1 = numValue
-                        lowerKey.contains("gnd_rssi2") -> gndRssi2 = numValue
-                        lowerKey.contains("gnd_snr") -> gndSnr = numValue
+                        lowerKey.contains("air_rssi1") -> { airRssi1 = numValue; airRssi1Str = valueStr }
+                        lowerKey.contains("air_rssi2") -> { airRssi2 = numValue; airRssi2Str = valueStr }
+                        lowerKey.contains("air_snr") -> { airSnr = numValue; airSnrStr = valueStr }
+                        lowerKey.contains("gnd_rssi1") -> { gndRssi1 = numValue; gndRssi1Str = valueStr }
+                        lowerKey.contains("gnd_rssi2") -> { gndRssi2 = numValue; gndRssi2Str = valueStr }
+                        lowerKey.contains("gnd_snr") -> { gndSnr = numValue; gndSnrStr = valueStr }
                     }
                 }
 
@@ -398,18 +417,50 @@ class FloatView(
                 }
             }
 
+            // ── 断链判定：SNR="0" 或 RSSI="110" ──
+            val airDisconnected = airSnrStr == "0" || airRssi1Str == "110" || airRssi2Str == "110"
+            val gndDisconnected = gndSnrStr == "0" || gndRssi1Str == "110" || gndRssi2Str == "110"
+
             // ── 更新信号格 ──
             val airRssi = airRssi1 ?: airRssi2
             val gndRssi = gndRssi1 ?: gndRssi2
-            val airQ = SignalQuality.fromRssiSnr(airRssi, airSnr)
-            val gndQ = SignalQuality.fromRssiSnr(gndRssi, gndSnr)
+            val airQ = if (airDisconnected) SignalQuality.DISCONNECTED
+                       else SignalQuality.fromRssiSnr(airRssi, airSnr, hasSnrData = true)
+            val gndQ = if (gndDisconnected) SignalQuality.DISCONNECTED
+                       else SignalQuality.fromRssiSnr(gndRssi, gndSnr, hasSnrData = true)
 
             airSignalBars.setQuality(airQ)
             gndSignalBars.setQuality(gndQ)
 
-            // 折叠态图标：取两端较差值
+            // 弹窗数据
+            airSignalBars.setDetailValues(
+                if (airDisconnected) "断链" else (airRssi1?.toInt()?.toString() ?: "--"),
+                if (airDisconnected) "断链" else (airRssi2?.toInt()?.toString() ?: "--"),
+                if (airDisconnected) "断链" else (airSnr?.toInt()?.toString() ?: "--")
+            )
+            gndSignalBars.setDetailValues(
+                if (gndDisconnected) "断链" else (gndRssi1?.toInt()?.toString() ?: "--"),
+                if (gndDisconnected) "断链" else (gndRssi2?.toInt()?.toString() ?: "--"),
+                if (gndDisconnected) "断链" else (gndSnr?.toInt()?.toString() ?: "--")
+            )
+
+            // 缓存（供折叠态弹窗用）
+            airRssi1Val = airRssi1?.toInt()?.toString() ?: "--"
+            airRssi2Val = airRssi2?.toInt()?.toString() ?: "--"
+            airSnrVal = airSnr?.toInt()?.toString() ?: "--"
+            gndRssi1Val = gndRssi1?.toInt()?.toString() ?: "--"
+            gndRssi2Val = gndRssi2?.toInt()?.toString() ?: "--"
+            gndSnrVal = gndSnr?.toInt()?.toString() ?: "--"
+
+            // 折叠态圆形图标：取两端较差值
             val overallQ = SignalQuality.worse(airQ, gndQ)
-            collapsedSignalView.setQuality(overallQ)
+            collapsedCircleView.setQuality(overallQ)
+            collapsedCircleView.setLabel("")
+            collapsedCircleView.setDetailValues(
+                "AIR.rssi1=$airRssi1Val AIR.rssi2=$airRssi2Val AIR.snr=$airSnrVal",
+                "GND.rssi1=$gndRssi1Val GND.rssi2=$gndRssi2Val GND.snr=$gndSnrVal",
+                overallQ.label
+            )
 
             airChartView.addData(airRssi1, airRssi2, airSnr)
             gndChartView.addData(gndRssi1, gndRssi2, gndSnr)
@@ -431,7 +482,7 @@ class FloatView(
     }
 
     // ──────────────────────────────────────────────
-    // 内嵌波形图
+    // 内嵌波形图（保持不变）
     // ──────────────────────────────────────────────
     private class WaveformView(
         context: Context,
@@ -446,9 +497,6 @@ class FloatView(
 
         private val axisTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#BDC3C7"); textSize = 16f
-        }
-        private val prefixTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.LTGRAY; textSize = 18f
         }
 
         private val colorRssi1 = Color.parseColor("#2980B9")
