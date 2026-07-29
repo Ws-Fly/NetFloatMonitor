@@ -1,174 +1,43 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF1A1A1A">
+    android:background="#FF1A1A2E">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="18dp">
+        android:padding="16dp">
 
         <!-- 标题 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="NetFloat Monitor"
-            android:textColor="#FF1ABC9C"
+            android:text="📡 NetFloatMonitor"
+            android:textColor="#FFE0E0E0"
             android:textSize="22sp"
             android:textStyle="bold"
-            android:layout_marginBottom="14dp"/>
+            android:layout_marginBottom="12dp" />
 
-        <!-- ── 实时信号显示格（新增） ── -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="#33000000"
-            android:padding="12dp"
-            android:layout_marginBottom="14dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="📶 实时信号质量"
-                android:textColor="#FF3498DB"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="10dp"/>
-
-            <!-- AIR 信号格 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="8dp">
-
-                <TextView
-                    android:layout_width="56dp"
-                    android:layout_height="wrap_content"
-                    android:text="AIR"
-                    android:textColor="#FF2ECC71"
-                    android:textSize="14sp"
-                    android:textStyle="bold"/>
-
-                <com.example.netfloatmonitor.SignalBarsView
-                    android:id="@+id/airSignalBars"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"/>
-
-                <TextView
-                    android:id="@+id/airSignalLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="--"
-                    android:textColor="#FFFFFFFF"
-                    android:textSize="12sp"
-                    android:maxLines="2"
-                    android:layout_marginStart="10dp"/>
-            </LinearLayout>
-
-            <!-- GND 信号格 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="8dp">
-
-                <TextView
-                    android:layout_width="56dp"
-                    android:layout_height="wrap_content"
-                    android:text="GND"
-                    android:textColor="#FF2ECC71"
-                    android:textSize="14sp"
-                    android:textStyle="bold"/>
-
-                <com.example.netfloatmonitor.SignalBarsView
-                    android:id="@+id/gndSignalBars"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"/>
-
-                <TextView
-                    android:id="@+id/gndSignalLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="--"
-                    android:textColor="#FFFFFFFF"
-                    android:textSize="12sp"
-                    android:maxLines="2"
-                    android:layout_marginStart="10dp"/>
-            </LinearLayout>
-
-            <!-- 总览信号 -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#22FFFFFF"
-                android:layout_marginVertical="4dp"/>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="56dp"
-                    android:layout_height="wrap_content"
-                    android:text="总览"
-                    android:textColor="#FFF39C12"
-                    android:textSize="14sp"
-                    android:textStyle="bold"/>
-
-                <com.example.netfloatmonitor.SignalBarsView
-                    android:id="@+id/overallSignalBars"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"/>
-
-                <TextView
-                    android:id="@+id/overallSignalLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="等待数据..."
-                    android:textColor="#FFBDC3C7"
-                    android:textSize="13sp"
-                    android:layout_marginStart="10dp"/>
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- IP 输入 -->
+        <!-- IP / 端口设置 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginBottom="10dp">
+            android:layout_marginBottom="8dp">
 
             <EditText
                 android:id="@+id/editIp"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="IP"
+                android:layout_weight="2"
+                android:hint="IP 地址"
                 android:textColor="#FFFFFFFF"
                 android:textColorHint="#FF888888"
-                android:inputType="text"/>
-        </LinearLayout>
-
-        <!-- 端口 + 按钮 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="14dp">
+                android:background="#FF2A2A4A"
+                android:padding="10dp"
+                android:textSize="14sp" />
 
             <EditText
                 android:id="@+id/editPort"
@@ -178,28 +47,137 @@
                 android:hint="端口"
                 android:textColor="#FFFFFFFF"
                 android:textColorHint="#FF888888"
-                android:inputType="number"/>
+                android:background="#FF2A2A4A"
+                android:padding="10dp"
+                android:layout_marginStart="8dp"
+                android:inputType="number"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- 控制按钮 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="12dp">
 
             <Button
                 android:id="@+id/startBtn"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="启动"
-                android:layout_marginStart="8dp"/>
+                android:layout_weight="1"
+                android:text="▶ 开始"
+                android:background="#FF1ABC9C"
+                android:textColor="#FFFFFFFF"
+                android:textSize="15sp" />
 
             <Button
                 android:id="@+id/stopBtn"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="停止"
-                android:layout_marginStart="6dp"/>
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="■ 停止"
+                android:background="#FFE74C3C"
+                android:textColor="#FFFFFFFF"
+                android:textSize="15sp" />
 
             <Button
                 android:id="@+id/clearBtn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="🗑 清除"
+                android:background="#FF95A5A6"
+                android:textColor="#FFFFFFFF"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <!-- 实时信号质量 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📶 实时信号质量"
+            android:textColor="#FFE0E0E0"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <!-- AIR 信号格 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="#FF2A2A4A"
+            android:padding="10dp"
+            android:layout_marginBottom="6dp"
+            android:gravity="center_vertical">
+
+            <com.example.netfloatmonitor.SignalBarsView
+                android:id="@+id/airSignalBars"
+                android:layout_width="120dp"
+                android:layout_height="50dp" />
+
+            <TextView
+                android:id="@+id/airSignalLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="清除"
-                android:layout_marginStart="6dp"/>
+                android:text="--"
+                android:textColor="#FFBDC3C7"
+                android:textSize="13sp"
+                android:layout_marginStart="12dp" />
+        </LinearLayout>
+
+        <!-- GND 信号格 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="#FF2A2A4A"
+            android:padding="10dp"
+            android:layout_marginBottom="6dp"
+            android:gravity="center_vertical">
+
+            <com.example.netfloatmonitor.SignalBarsView
+                android:id="@+id/gndSignalBars"
+                android:layout_width="120dp"
+                android:layout_height="50dp" />
+
+            <TextView
+                android:id="@+id/gndSignalLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="--"
+                android:textColor="#FFBDC3C7"
+                android:textSize="13sp"
+                android:layout_marginStart="12dp" />
+        </LinearLayout>
+
+        <!-- 总览信号格 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="#FF1ABC9C"
+            android:padding="10dp"
+            android:layout_marginBottom="12dp"
+            android:gravity="center_vertical">
+
+            <com.example.netfloatmonitor.SignalBarsView
+                android:id="@+id/overallSignalBars"
+                android:layout_width="120dp"
+                android:layout_height="50dp" />
+
+            <TextView
+                android:id="@+id/overallSignalLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="等待数据..."
+                android:textColor="#FFFFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginStart="12dp" />
         </LinearLayout>
 
         <!-- 状态信息 -->
@@ -207,18 +185,22 @@
             android:id="@+id/tvStatusInfo"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:background="#FF2A2A4A"
+            android:padding="12dp"
             android:textColor="#FFBDC3C7"
             android:textSize="13sp"
-            android:typeface="monospace"
-            android:layout_marginBottom="10dp"/>
+            android:lineSpacingExtra="4dp"
+            android:layout_marginBottom="8dp" />
 
         <!-- 日志路径 -->
         <TextView
             android:id="@+id/logPath"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:background="#FF2A2A4A"
+            android:padding="10dp"
             android:textColor="#FF7F8C8D"
-            android:textSize="11sp"/>
+            android:textSize="11sp" />
 
     </LinearLayout>
 </ScrollView>
