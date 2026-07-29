@@ -1,9 +1,7 @@
 package com.example.netfloatmonitor
 
 import android.content.Context
-import android.graphics.Color
 import android.view.Gravity
-import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.Toast
 
@@ -20,7 +18,7 @@ class FloatView(context: Context) : LinearLayout(context) {
     }
 
     /**
-     * ✅ 所有数据都从参数进来
+     * ✅ 所有数据从参数进
      * ✅ 不访问任何成员变量
      */
     fun update(
@@ -36,7 +34,15 @@ class FloatView(context: Context) : LinearLayout(context) {
         icon.setSignalQuality(totalQ)
     }
 
-    fun showDetail() {
+    /**
+     * ✅ 长按弹窗（参数化，不再引用不存在变量）
+     */
+    fun showDetail(
+        airRssi: String,
+        airSnr: String,
+        gndRssi: String,
+        gndSnr: String
+    ) {
         Toast.makeText(
             context,
             "AIR: rssi=$airRssi snr=$airSnr\nGND: rssi=$gndRssi snr=$gndSnr",
