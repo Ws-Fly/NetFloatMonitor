@@ -4,12 +4,17 @@ enum class SignalQuality {
     EXCELLENT, GOOD, FAIR, POOR, BAD, DISCONNECTED;
 
     companion object {
+        /**
+         * rssi / snr 都是字符串
+         * 断链判定：SNR=="0" 或 RSSI=="110" 或空白
+         */
         fun fromRawStrings(rssiStr: String?, snrStr: String?): SignalQuality {
-            val rssi = rssiStr?.toFloatOrNull()
-            val snr = snrStr?.toFloatOrNull()
+            val rssi = rssiStr?.toIntOrNull()
+            val snr = snrStr?.toIntOrNull()
 
             if (rssiStr.isNullOrBlank() || snrStr.isNullOrBlank()) return DISCONNECTED
-            if (rssi == 110f || snr == 0f) return DISCONNECTED
+            if (rssi == null || snr == null) return DISCONNECTED
+            if (rssi == 110 || snr == 0) return DISCONNECTED
 
             return when {
                 rssi <= 75 && snr >= 20 -> EXCELLENT
@@ -21,7 +26,6 @@ enum class SignalQuality {
         }
 
         fun worse(a: SignalQuality, b: SignalQuality): SignalQuality =
-            values().maxOf { it.ordinal - a.ordinal + b.ordinal }
-                .let { values()[it] }
+            if (a.ordinal > b.ordinal) a else b
     }
 }
