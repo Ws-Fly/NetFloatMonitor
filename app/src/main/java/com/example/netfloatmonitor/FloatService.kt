@@ -25,10 +25,15 @@ class FloatService : Service() {
     private var currentHz = 0
     private var statusTimer: Timer? = null
 
+    // ── 缓存最新 RSSI/SNR（从 LinkStatus 解析） ──
+    private var airRssi: Float? = null
+    private var airSnr: Float? = null
+    private var gndRssi: Float? = null
+    private var gndSnr: Float? = null
+
     override fun onCreate() {
         super.onCreate()
         logger = LogManager(this)
-        
         Log.d("FloatService", "Service onCreate 触发")
         createNotificationChannel()
         startForeground(1001, createNotification())
@@ -36,33 +41,47 @@ class FloatService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val port = intent?.getIntExtra("PORT", 16789) ?: 16789
-        
+
         totalPackets = 0
         currentHz = 0
+        airRssi = null; airSnr = null
+        gndRssi = null; gndSnr = null
         logger.startNewSession()
-        
+
         showFloatWindow()
         startUdpReceive(port)
         startStatusTimer()
 
-        // 【新增优化】延迟 200ms 发送第一帧广播，确保前台 Activity 的 BroadcastReceiver 已经完全注册完成
         Handler(Looper.getMainLooper()).postDelayed({
             sendStatusBroadcast()
         }, 200)
-        
+
         return START_NOT_STICKY
     }
 
     private fun startUdpReceive(port: Int) {
         receiver?.stop()
-        
+
         receiver = UdpReceiver(port) { data ->
             try {
                 totalPackets++
                 packetsInLastSecond++
 
                 logger.save(data)
-                
+
+                // ── 解析 JSON 提取 RSSI/SNR ──
+                try {
+                    val linkStatus = JsonParser.parse(data)
+                    airRssi = linkStatus.airRssi1.toFloatOrNull()?.let { Math.abs(it) }
+                        ?: linkStatus.airRssi2.toFloatOrNull()?.let { Math.abs(it) }
+                    airSnr = linkStatus.airSnr.toFloatOrNull()
+                    gndRssi = linkStatus.gndRssi1.toFloatOrNull()?.let { Math.abs(it) }
+                        ?: linkStatus.gndRssi2.toFloatOrNull()?.let { Math.abs(it) }
+                    gndSnr = linkStatus.gndSnr.toFloatOrNull()
+                } catch (je: Exception) {
+                    Log.w("FloatService", "RSSI解析跳过: ${je.message}")
+                }
+
                 floatView?.post {
                     floatView?.updateJson(data)
                 }
@@ -70,7 +89,7 @@ class FloatService : Service() {
                 Log.e("FloatService", "数据流转处理异常", e)
             }
         }
-        
+
         receiver?.start()
     }
 
@@ -86,11 +105,15 @@ class FloatService : Service() {
         }, 1000, 1000)
     }
 
-    // 抽取为独立方法，方便复用
     private fun sendStatusBroadcast() {
         val intent = Intent("com.example.netfloatmonitor.STATUS_UPDATE").apply {
             putExtra("TOTAL_PACKETS", totalPackets)
             putExtra("HZ", currentHz)
+            // 附带 RSSI/SNR 供主界面信号格使用
+            airRssi?.let { putExtra("AIR_RSSI", it) }
+            airSnr?.let { putExtra("AIR_SNR", it) }
+            gndRssi?.let { putExtra("GND_RSSI", it) }
+            gndSnr?.let { putExtra("GND_SNR", it) }
         }
         LocalBroadcastManager.getInstance(this@FloatService).sendBroadcast(intent)
     }
@@ -99,7 +122,7 @@ class FloatService : Service() {
         if (floatView != null) return
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val params = WindowManager.LayoutParams()
-        
+
         params.width = WindowManager.LayoutParams.WRAP_CONTENT
         params.height = WindowManager.LayoutParams.WRAP_CONTENT
         params.type = if (Build.VERSION.SDK_INT >= 26) {
@@ -111,7 +134,7 @@ class FloatService : Service() {
         params.format = PixelFormat.TRANSLUCENT
         params.x = 50
         params.y = 200
-        
+
         floatView = FloatView(this, wm, params)
         wm.addView(floatView, params)
     }
@@ -120,9 +143,9 @@ class FloatService : Service() {
         super.onDestroy()
         statusTimer?.cancel()
         statusTimer = null
-        
+
         logger.stopSession()
-        
+
         val intent = Intent("com.example.netfloatmonitor.STATUS_UPDATE").apply {
             putExtra("IS_STOPPED", true)
         }
@@ -130,7 +153,7 @@ class FloatService : Service() {
 
         receiver?.stop()
         receiver = null
-        
+
         if (floatView != null) {
             try {
                 val wm = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -147,8 +170,8 @@ class FloatService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             val channel = NotificationChannel(
-                "net_monitor", 
-                "NetFloat Monitor", 
+                "net_monitor",
+                "NetFloat Monitor",
                 NotificationManager.IMPORTANCE_LOW
             )
             val manager = getSystemService(NotificationManager::class.java)
