@@ -6,26 +6,26 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import android.view.Gravity
 import android.view.WindowManager
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.nio.charset.Charset
 
 class FloatService : Service() {
 
-    private var running = false
-    private var socket: DatagramSocket? = null
+    private var udpReceiver: UdpReceiver? = null
     private var floatView: FloatView? = null
     private var wm: WindowManager? = null
     private lateinit var params: WindowManager.LayoutParams
 
+    private var totalPackets = 0
+    private var currentHz = 0
+    private var lastCount = 0
+    private var lastTime = System.currentTimeMillis()
+
     companion object {
-        const val ACTION_SIGNAL_UPDATE = "com.example.netfloatmonitor.ACTION_SIGNAL_UPDATE"
-        const val EXTRA_AIR_RSSI = "air_rssi"
-        const val EXTRA_AIR_SNR = "air_snr"
-        const val EXTRA_GND_RSSI = "gnd_rssi"
-        const val EXTRA_GND_SNR = "gnd_snr"
+        const val ACTION_STATUS = "com.example.netfloatmonitor.STATUS_UPDATE"
+        const val EXTRA_AIR_RSSI = "AIR_RSSI"
+        const val EXTRA_AIR_SNR = "AIR_SNR"
+        const val EXTRA_GND_RSSI = "GND_RSSI"
+        const val EXTRA_GND_SNR = "GND_SNR"
     }
 
     override fun onCreate() {
@@ -33,84 +33,107 @@ class FloatService : Service() {
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
         params = WindowManager.LayoutParams().apply {
-            width = 260
-            height = 260
+            width = 1000
+            height = 600
             type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else
                 WindowManager.LayoutParams.TYPE_PHONE
             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             format = PixelFormat.TRANSLUCENT
-            gravity = Gravity.TOP or Gravity.START
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
             x = 0
             y = 200
         }
 
-        floatView = FloatView(this)
+        floatView = FloatView(this).apply {
+            windowParams = params
+            windowManager = wm
+        }
         wm?.addView(floatView, params)
+
+        Log.d("FloatService", "FloatService created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!running) {
-            running = true
-            startUdp()
-        }
+        val port = intent?.getIntExtra("PORT", 16789) ?: 16789
+        startUdp(port)
         return START_STICKY
     }
 
-    private fun startUdp() {
-        Thread {
-            try {
-                socket = DatagramSocket(8888)
-                val buffer = ByteArray(1024)
-                while (running) {
-                    val packet = DatagramPacket(buffer, buffer.size)
-                    socket?.receive(packet)
-                    val json = String(packet.data, 0, packet.length, Charset.forName("UTF-8"))
-                    handleJson(json)
-                }
-            } catch (e: Exception) {
-                Log.e("FloatService", "UDP error", e)
+    private fun startUdp(port: Int) {
+        if (udpReceiver != null) return
+
+        udpReceiver = UdpReceiver(port) { data ->
+            totalPackets++
+
+            val now = System.currentTimeMillis()
+            val elapsed = now - lastTime
+            if (elapsed >= 1000) {
+                currentHz = ((totalPackets - lastCount) * 1000 / elapsed).toInt()
+                lastCount = totalPackets
+                lastTime = now
             }
-        }.start()
+
+            // 更新悬浮窗（主线程）
+            floatView?.post {
+                floatView?.updateJson(data)
+            }
+
+            // 解析 RSSI/SNR 并发广播给 MainActivity
+            try {
+                val obj = org.json.JSONObject(data)
+
+                fun pick(obj: org.json.JSONObject, vararg keys: String): String {
+                    for (k in keys) {
+                        if (obj.has(k)) return obj.getString(k)
+                    }
+                    return "110"
+                }
+
+                val airRssi = pick(obj, "rssi1_a", "rssi_a", "air_rssi1")
+                val airSnr = pick(obj, "snr_a", "air_snr")
+                val gndRssi = pick(obj, "rssi1_g", "rssi_g", "gnd_rssi1")
+                val gndSnr = pick(obj, "snr_g", "gnd_snr")
+
+                val statusIntent = Intent(ACTION_STATUS).apply {
+                    putExtra(EXTRA_AIR_RSSI, airRssi)
+                    putExtra(EXTRA_AIR_SNR, airSnr)
+                    putExtra(EXTRA_GND_RSSI, gndRssi)
+                    putExtra(EXTRA_GND_SNR, gndSnr)
+                    putExtra("TOTAL_PACKETS", totalPackets)
+                    putExtra("HZ", currentHz)
+                }
+                androidx.localbroadcastmanager.content.LocalBroadcastManager
+                    .getInstance(this).sendBroadcast(statusIntent)
+
+            } catch (e: Exception) {
+                Log.e("FloatService", "Parse error: ${e.message}")
+            }
+
+            // 日志
+            val logger = LogManager.getInstance(this)
+            logger.save(data)
+        }
+        udpReceiver?.start()
     }
 
-    private fun handleJson(json: String) {
-        var airRssi = "110"
-        var airSnr = "0"
-        var gndRssi = "110"
-        var gndSnr = "0"
+    fun stopMonitoring() {
+        udpReceiver?.stop()
+        udpReceiver = null
+        totalPackets = 0
+        currentHz = 0
 
-        try {
-            if (json.contains("rssi1_a")) {
-                airRssi = json.substringAfter("\"rssi1_a\":\"").substringBefore("\"")
-            }
-            if (json.contains("snr_a")) {
-                airSnr = json.substringAfter("\"snr_a\":\"").substringBefore("\"")
-            }
-            if (json.contains("rssi1_g")) {
-                gndRssi = json.substringAfter("\"rssi1_g\":\"").substringBefore("\"")
-            }
-            if (json.contains("snr_g")) {
-                gndSnr = json.substringAfter("\"snr_g\":\"").substringBefore("\"")
-            }
-        } catch (_: Exception) {}
-
-        floatView?.update(airRssi, airSnr, gndRssi, gndSnr)
-        floatView?.showDetail(airRssi, airSnr, gndRssi, gndSnr)
-
-        val intent = Intent(ACTION_SIGNAL_UPDATE).apply {
-            putExtra(EXTRA_AIR_RSSI, airRssi)
-            putExtra(EXTRA_AIR_SNR, airSnr)
-            putExtra(EXTRA_GND_RSSI, gndRssi)
-            putExtra(EXTRA_GND_SNR, gndSnr)
+        val stoppedIntent = Intent(ACTION_STATUS).apply {
+            putExtra("IS_STOPPED", true)
         }
-        sendBroadcast(intent)
+        androidx.localbroadcastmanager.content.LocalBroadcastManager
+            .getInstance(this).sendBroadcast(stoppedIntent)
     }
 
     override fun onDestroy() {
-        running = false
-        try { socket?.close() } catch (_: Exception) {}
+        udpReceiver?.stop()
+        udpReceiver = null
         if (floatView != null) {
             wm?.removeView(floatView)
             floatView = null
