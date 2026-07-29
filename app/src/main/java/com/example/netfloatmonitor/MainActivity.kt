@@ -21,7 +21,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var logManager: LogManager
     private lateinit var tvStatusInfo: TextView
 
-    // ── 信号格控件 ──
     private lateinit var airSignalBars: SignalBarsView
     private lateinit var gndSignalBars: SignalBarsView
     private lateinit var overallSignalBars: SignalBarsView
@@ -29,7 +28,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var gndSignalLabel: TextView
     private lateinit var overallSignalLabel: TextView
 
-    // 缓存
     private var latestAirRssi: String? = null
     private var latestAirSnr: String? = null
     private var latestGndRssi: String? = null
@@ -48,7 +46,6 @@ class MainActivity : AppCompatActivity() {
             val total = intent.getIntExtra("TOTAL_PACKETS", 0)
             val hz = intent.getIntExtra("HZ", 0)
 
-            // ✅ 用 getStringExtra（广播发的是 String）
             latestAirRssi = intent.getStringExtra("AIR_RSSI") ?: "110"
             latestAirSnr = intent.getStringExtra("AIR_SNR") ?: "0"
             latestGndRssi = intent.getStringExtra("GND_RSSI") ?: "110"
@@ -88,29 +85,20 @@ class MainActivity : AppCompatActivity() {
         gndSignalBars.setSignalQuality(gndQ)
         overallSignalBars.setSignalQuality(overallQ)
 
-        airSignalLabel.text = if (airQ == SignalQuality.DISCONNECTED) {
-            "✕ 断链"
-        } else {
-            "rssi=${latestAirRssi} snr=${latestAirSnr}"
-        }
+        airSignalLabel.text = if (airQ == SignalQuality.DISCONNECTED) "✕ 断链"
+        else "rssi=${latestAirRssi} snr=${latestAirSnr}"
 
-        gndSignalLabel.text = if (gndQ == SignalQuality.DISCONNECTED) {
-            "✕ 断链"
-        } else {
-            "rssi=${latestGndRssi} snr=${latestGndSnr}"
-        }
+        gndSignalLabel.text = if (gndQ == SignalQuality.DISCONNECTED) "✕ 断链"
+        else "rssi=${latestGndRssi} snr=${latestGndSnr}"
 
-        overallSignalLabel.text = if (overallQ == SignalQuality.DISCONNECTED) {
-            "✕ 断链"
-        } else {
-            when (overallQ) {
-                SignalQuality.EXCELLENT -> "5格 · 极佳"
-                SignalQuality.GOOD -> "4格 · 良好"
-                SignalQuality.FAIR -> "3格 · 一般"
-                SignalQuality.POOR -> "2格 · 稍差"
-                SignalQuality.BAD -> "1格 · 极差"
-                else -> "--"
-            }
+        overallSignalLabel.text = if (overallQ == SignalQuality.DISCONNECTED) "✕ 断链"
+        else when (overallQ) {
+            SignalQuality.EXCELLENT -> "5格 · 极佳"
+            SignalQuality.GOOD -> "4格 · 良好"
+            SignalQuality.FAIR -> "3格 · 一般"
+            SignalQuality.POOR -> "2格 · 稍差"
+            SignalQuality.BAD -> "1格 · 极差"
+            else -> "--"
         }
     }
 
@@ -172,15 +160,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         stopBtn.setOnClickListener {
-            // 通知 FloatService 停止
-            val intent = Intent(this, FloatService::class.java)
-            stopService(intent)
+            stopService(Intent(this, FloatService::class.java))
             Toast.makeText(this, "监听已停止，CSV表格已封存", Toast.LENGTH_SHORT).show()
         }
 
-        clearBtn.setOnClickListener {
-            clearLog()
-        }
+        clearBtn.setOnClickListener { clearLog() }
     }
 
     override fun onStart() {
