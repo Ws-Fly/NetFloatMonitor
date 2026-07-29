@@ -23,34 +23,36 @@ class FloatView(
     private val params: WindowManager.LayoutParams
 ) : LinearLayout(context) {
 
+    // ── 展开态布局 ──
     private val airLayout = LinearLayout(context)
     private val gndLayout = LinearLayout(context)
-
-    // 右侧图表
     private val chartContainer = LinearLayout(context)
     private val airChartView = WaveformView(context, isAir = true)
     private val gndChartView = WaveformView(context, isAir = false)
 
-    // ── 信号格（AIR / GND / 折叠态圆形图标） ──
+    // ── 展开态信号格 ──
     private val airSignalBars = SignalBarsView(context)
     private val gndSignalBars = SignalBarsView(context)
 
-    // 折叠态：圆形图标里画信号格
-    private val collapsedCircleView = SignalBarsView(context).apply {
+    // ── 折叠态：单个圆形信号格（总览） ──
+    private val collapsedIcon = SignalBarsView(context).apply {
         setCircularMode(true)
     }
 
+    // ── 状态 ──
     private var isExpanded = true
     private var lastExpandedWidth = 1300
     private var lastExpandedHeight = 540
-    private val collapsedSize = 96   // 圆形图标 96dp，更紧凑
+    private val collapsedSize = 100  // dp，圆形图标大小
 
+    // ── 拖动/缩放 ──
     private var startWidth = 0
     private var startHeight = 0
     private var downX = 0f
     private var downY = 0f
     private var resize = false
 
+    // ── 展开态的容器 ──
     private val topBar = LinearLayout(context)
     private val contentFrame = FrameLayout(context)
     private val contentPanel = LinearLayout(context)
@@ -64,6 +66,7 @@ class FloatView(
         visibility = View.VISIBLE
     }
 
+    // × 关闭/折叠按钮
     private val toggleBtn = Button(context).apply {
         text = "×"
         textSize = 14f
@@ -76,7 +79,7 @@ class FloatView(
         background = btnBg
     }
 
-    // ── 缓存最新数值（供弹窗和折叠态使用） ──
+    // ── 缓存数值（供弹窗） ──
     private var airRssi1Val: String = "--"
     private var airRssi2Val: String = "--"
     private var airSnrVal: String = "--"
@@ -93,19 +96,19 @@ class FloatView(
         bg.cornerRadius = 10f
         this.setBackground(bg)
 
+        // ── 顶部栏（× 按钮） ──
         topBar.setOrientation(LinearLayout.HORIZONTAL)
         topBar.setGravity(Gravity.RIGHT or Gravity.CENTER_VERTICAL)
         topBar.setPadding(0, 0, 4, 4)
-
         val btnLp = LinearLayout.LayoutParams(45, 45)
         topBar.addView(toggleBtn, btnLp)
         addView(topBar)
 
+        // ── 内容面板 ──
         contentPanel.setOrientation(LinearLayout.HORIZONTAL)
         airLayout.setOrientation(LinearLayout.VERTICAL)
         gndLayout.setOrientation(LinearLayout.VERTICAL)
 
-        // ── AIR 面板顶部插入信号格（带点击弹窗） ──
         airSignalBars.setLabel("AIR")
         val airBarLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -113,7 +116,6 @@ class FloatView(
         ).apply { setMargins(0, 0, 0, 6) }
         airLayout.addView(airSignalBars, airBarLp)
 
-        // ── GND 面板顶部插入信号格 ──
         gndSignalBars.setLabel("GND")
         val gndBarLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -148,14 +150,13 @@ class FloatView(
         }
         contentFrame.addView(resizeIndicator, indicatorLp)
 
-        // ── 折叠态：圆形信号格图标（居中覆盖整个区域） ──
-        collapsedCircleView.visibility = View.GONE
-        collapsedCircleView.setLabel("")
+        // ── 折叠态圆形图标（初始隐藏） ──
+        collapsedIcon.visibility = View.GONE
         val collapsedLp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ).apply { gravity = Gravity.CENTER }
-        contentFrame.addView(collapsedCircleView, collapsedLp)
+        contentFrame.addView(collapsedIcon, collapsedLp)
 
         val frameLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -163,72 +164,56 @@ class FloatView(
         )
         addView(contentFrame, frameLp)
 
-        // 初始状态
+        // 初始信号格状态
         airSignalBars.setQuality(SignalQuality.BAD)
         gndSignalBars.setQuality(SignalQuality.BAD)
-        collapsedCircleView.setQuality(SignalQuality.BAD)
+        collapsedIcon.setQuality(SignalQuality.BAD)
 
-        // ── 折叠按钮触摸逻辑（保留原有） ──
-        toggleBtn.setOnTouchListener(object : OnTouchListener {
-            private var btnDownX = 0f
-            private var btnDownY = 0f
-            private var isDragging = false
+        // ── ★ 折叠态圆形图标：点击展开 ★ ──
+        collapsedIcon.setOnClickListener {
+            if (!isExpanded) performToggle()
+        }
+        // 也支持长按弹窗（总览详情）
+        collapsedIcon.setOnLongClickListener {
+            true // 交给 SignalBarsView 内部弹窗处理
+        }
 
-            override fun onTouch(v: View?, event: MotionEvent): Boolean {
-                if (isExpanded) return false
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        downX = event.rawX
-                        downY = event.rawY
-                        btnDownX = event.rawX
-                        btnDownY = event.rawY
-                        isDragging = false
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val dx = event.rawX - btnDownX
-                        val dy = event.rawY - btnDownY
-                        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) isDragging = true
-                        if (isDragging) {
-                            params.x += (event.rawX - downX).toInt()
-                            params.y += (event.rawY - downY).toInt()
-                            downX = event.rawX
-                            downY = event.rawY
-                            val maxAllowableY = getScreenHeight() - getNavigationBarHeight() - height
-                            if (params.y > maxAllowableY) params.y = maxAllowableY
-                            windowManager.updateViewLayout(this@FloatView, params)
-                        }
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        if (!isDragging) performToggle()
-                    }
-                }
-                return true
-            }
-        })
-
+        // ── × 按钮：点击折叠 ──
         toggleBtn.setOnClickListener {
             if (isExpanded) performToggle()
         }
 
-        // ── 整体拖动 / 缩放（保留原有） ──
+        // ── 整体拖动（展开态） / 拖动（折叠态） ──
         setOnTouchListener(object : OnTouchListener {
+            private var isDragging = false
+            private var dragStartRawX = 0f
+            private var dragStartRawY = 0f
+
             override fun onTouch(v: View?, event: MotionEvent): Boolean {
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
                         downX = event.rawX
                         downY = event.rawY
+                        dragStartRawX = event.rawX
+                        dragStartRawY = event.rawY
                         startWidth = width
                         startHeight = height
                         resize = isExpanded && (event.x > (width - 120)) && (event.y > (height - 120))
+                        isDragging = false
                     }
                     MotionEvent.ACTION_MOVE -> {
+                        val dx = event.rawX - dragStartRawX
+                        val dy = event.rawY - dragStartRawY
+                        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) isDragging = true
+
                         val location = IntArray(2)
                         this@FloatView.getLocationOnScreen(location)
                         val absoluteY = location[1]
                         val navBarHeight = getNavigationBarHeight()
                         val usableScreenHeight = getScreenHeight() - navBarHeight
 
-                        if (resize) {
+                        if (isExpanded && resize) {
+                            // 展开态右下角缩放
                             val newWidth = (startWidth + event.rawX - downX).toInt().coerceAtLeast(500)
                             var newHeight = (startHeight + event.rawY - downY).toInt().coerceAtLeast(200)
                             if (absoluteY + newHeight > usableScreenHeight) {
@@ -238,7 +223,8 @@ class FloatView(
                             params.height = newHeight
                             lastExpandedWidth = newWidth
                             lastExpandedHeight = newHeight
-                        } else {
+                        } else if (isDragging) {
+                            // 拖动整个悬浮窗
                             params.x += (event.rawX - downX).toInt()
                             var targetY = params.y + (event.rawY - downY).toInt()
                             if (targetY + height > usableScreenHeight) {
@@ -249,6 +235,12 @@ class FloatView(
                             downY = event.rawY
                         }
                         windowManager.updateViewLayout(this@FloatView, params)
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        // 折叠态单击（非拖动）→ 展开
+                        if (!isExpanded && !isDragging) {
+                            performToggle()
+                        }
                     }
                 }
                 return true
@@ -269,58 +261,47 @@ class FloatView(
         return context.resources.displayMetrics.heightPixels
     }
 
-    // ── 折叠 / 展开（保留原有逻辑 + 圆形图标适配） ──
+    /**
+     * 折叠 ↔ 展开 切换
+     */
     private fun performToggle() {
-        val panelBg = GradientDrawable()
-
         if (isExpanded) {
-            // → 折叠：隐藏内容，显示圆形信号格图标
+            // ═══ 展开 → 折叠 ═══
             isExpanded = false
+
+            // 隐藏展开态所有内容
+            topBar.visibility = View.GONE
             contentPanel.visibility = View.GONE
             resizeIndicator.visibility = View.GONE
-            collapsedCircleView.visibility = View.VISIBLE
 
-            val collapsedLp2 = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-            )
-            toggleBtn.layoutParams = collapsedLp2
-            toggleBtn.text = ""
-            toggleBtn.textSize = 1f
-            val btnBg = GradientDrawable().apply {
-                setColor(Color.TRANSPARENT)
-                cornerRadius = 80f
-            }
-            toggleBtn.background = btnBg
+            // 显示圆形图标
+            collapsedIcon.visibility = View.VISIBLE
 
-            panelBg.setColor(Color.TRANSPARENT)
-            this.setBackground(panelBg)
+            // 去掉背景，只留圆形图标本身
+            this.setBackground(null)
             this.setPadding(0, 0, 0, 0)
 
+            // 窗口缩为正方形小图标
             params.width = collapsedSize
             params.height = collapsedSize
         } else {
-            // → 展开：恢复内容面板
+            // ═══ 折叠 → 展开 ═══
             isExpanded = true
+
+            // 恢复展开态
+            topBar.visibility = View.VISIBLE
             contentPanel.visibility = View.VISIBLE
             resizeIndicator.visibility = View.VISIBLE
-            collapsedCircleView.visibility = View.GONE
+            collapsedIcon.visibility = View.GONE
 
-            val expandedLp = LinearLayout.LayoutParams(45, 45)
-            toggleBtn.layoutParams = expandedLp
-            toggleBtn.text = "×"
-            toggleBtn.textSize = 14f
-            val btnBg = GradientDrawable().apply {
-                setColor(Color.parseColor("#C0392B"))
-                cornerRadius = 6f
-            }
-            toggleBtn.background = btnBg
-
+            // 恢复背景
+            val panelBg = GradientDrawable()
             panelBg.setColor(Color.argb(180, 0, 0, 0))
             panelBg.cornerRadius = 10f
             this.setBackground(panelBg)
             this.setPadding(8, 6, 8, 8)
 
+            // 恢复窗口尺寸
             params.width = lastExpandedWidth
             params.height = lastExpandedHeight
         }
@@ -336,11 +317,10 @@ class FloatView(
 
         val lp = LinearLayout.LayoutParams(300, LinearLayout.LayoutParams.MATCH_PARENT)
         box.addView(scroll, lp)
-
         return box
     }
 
-    // ── JSON 数据刷新（核心） ──
+    // ── JSON 数据刷新 ──
     fun updateJson(json: String) {
         try {
             if (json.isBlank()) return
@@ -370,7 +350,6 @@ class FloatView(
             var gndRssi2: Float? = null
             var gndSnr: Float? = null
 
-            // 原始字符串（用于断链判定）
             var airRssi1Str = ""
             var airRssi2Str = ""
             var airSnrStr = ""
@@ -417,20 +396,26 @@ class FloatView(
                 }
             }
 
-            // ── 断链判定：SNR="0" 或 RSSI="110" ──
+            // ── 断链判定 ──
             val airDisconnected = airSnrStr == "0" || airRssi1Str == "110" || airRssi2Str == "110"
             val gndDisconnected = gndSnrStr == "0" || gndRssi1Str == "110" || gndRssi2Str == "110"
 
-            // ── 更新信号格 ──
             val airRssi = airRssi1 ?: airRssi2
             val gndRssi = gndRssi1 ?: gndRssi2
+
             val airQ = if (airDisconnected) SignalQuality.DISCONNECTED
                        else SignalQuality.fromRssiSnr(airRssi, airSnr, hasSnrData = true)
             val gndQ = if (gndDisconnected) SignalQuality.DISCONNECTED
                        else SignalQuality.fromRssiSnr(gndRssi, gndSnr, hasSnrData = true)
 
+            // ── 展开态信号格 ──
             airSignalBars.setQuality(airQ)
             gndSignalBars.setQuality(gndQ)
+
+            // ── 折叠态圆形图标 = 总览（取较差值） ──
+            val overallQ = SignalQuality.worse(airQ, gndQ)
+            collapsedIcon.setQuality(overallQ)
+            collapsedIcon.setLabel("总览")
 
             // 弹窗数据
             airSignalBars.setDetailValues(
@@ -443,24 +428,19 @@ class FloatView(
                 if (gndDisconnected) "断链" else (gndRssi2?.toInt()?.toString() ?: "--"),
                 if (gndDisconnected) "断链" else (gndSnr?.toInt()?.toString() ?: "--")
             )
+            collapsedIcon.setDetailValues(
+                "AIR: rssi1=${airRssi1?.toInt() ?: "--"} rssi2=${airRssi2?.toInt() ?: "--"} snr=${airSnr?.toInt() ?: "--"}",
+                "GND: rssi1=${gndRssi1?.toInt() ?: "--"} rssi2=${gndRssi2?.toInt() ?: "--"} snr=${gndSnr?.toInt() ?: "--"}",
+                "总览: ${overallQ.label} (${overallQ.bars}格)"
+            )
 
-            // 缓存（供折叠态弹窗用）
+            // 缓存
             airRssi1Val = airRssi1?.toInt()?.toString() ?: "--"
             airRssi2Val = airRssi2?.toInt()?.toString() ?: "--"
             airSnrVal = airSnr?.toInt()?.toString() ?: "--"
             gndRssi1Val = gndRssi1?.toInt()?.toString() ?: "--"
             gndRssi2Val = gndRssi2?.toInt()?.toString() ?: "--"
             gndSnrVal = gndSnr?.toInt()?.toString() ?: "--"
-
-            // 折叠态圆形图标：取两端较差值
-            val overallQ = SignalQuality.worse(airQ, gndQ)
-            collapsedCircleView.setQuality(overallQ)
-            collapsedCircleView.setLabel("")
-            collapsedCircleView.setDetailValues(
-                "AIR.rssi1=$airRssi1Val AIR.rssi2=$airRssi2Val AIR.snr=$airSnrVal",
-                "GND.rssi1=$gndRssi1Val GND.rssi2=$gndRssi2Val GND.snr=$gndSnrVal",
-                overallQ.label
-            )
 
             airChartView.addData(airRssi1, airRssi2, airSnr)
             gndChartView.addData(gndRssi1, gndRssi2, gndSnr)
@@ -482,7 +462,7 @@ class FloatView(
     }
 
     // ──────────────────────────────────────────────
-    // 内嵌波形图（保持不变）
+    // 内嵌波形图
     // ──────────────────────────────────────────────
     private class WaveformView(
         context: Context,
