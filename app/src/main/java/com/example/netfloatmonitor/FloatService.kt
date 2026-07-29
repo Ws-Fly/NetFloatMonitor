@@ -2,8 +2,12 @@ package com.example.netfloatmonitor
 
 import android.app.Service
 import android.content.Intent
+import android.graphics.PixelFormat
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import android.view.Gravity
+import android.view.WindowManager
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.nio.charset.Charset
@@ -13,6 +17,8 @@ class FloatService : Service() {
     private var running = false
     private var socket: DatagramSocket? = null
     private var floatView: FloatView? = null
+    private var wm: WindowManager? = null
+    private lateinit var params: WindowManager.LayoutParams
 
     companion object {
         const val ACTION_SIGNAL_UPDATE = "com.example.netfloatmonitor.ACTION_SIGNAL_UPDATE"
@@ -24,8 +30,24 @@ class FloatService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        wm = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        params = WindowManager.LayoutParams().apply {
+            width = 260
+            height = 260
+            type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                WindowManager.LayoutParams.TYPE_PHONE
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            format = PixelFormat.TRANSLUCENT
+            gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 200
+        }
+
         floatView = FloatView(this)
-        floatView?.show()
+        wm?.addView(floatView, params)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -75,6 +97,7 @@ class FloatService : Service() {
         } catch (_: Exception) {}
 
         floatView?.update(airRssi, airSnr, gndRssi, gndSnr)
+        floatView?.showDetail(airRssi, airSnr, gndRssi, gndSnr)
 
         val intent = Intent(ACTION_SIGNAL_UPDATE).apply {
             putExtra(EXTRA_AIR_RSSI, airRssi)
@@ -88,7 +111,10 @@ class FloatService : Service() {
     override fun onDestroy() {
         running = false
         try { socket?.close() } catch (_: Exception) {}
-        floatView = null
+        if (floatView != null) {
+            wm?.removeView(floatView)
+            floatView = null
+        }
         super.onDestroy()
     }
 
