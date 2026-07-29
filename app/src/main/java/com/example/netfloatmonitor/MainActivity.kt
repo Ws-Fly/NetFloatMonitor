@@ -20,6 +20,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var logManager: LogManager
     private lateinit var tvStatusInfo: TextView
 
+    // ── 信号格控件 ──
     private lateinit var airSignalBars: SignalBarsView
     private lateinit var gndSignalBars: SignalBarsView
     private lateinit var overallSignalBars: SignalBarsView
@@ -27,6 +28,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var gndSignalLabel: TextView
     private lateinit var overallSignalLabel: TextView
 
+    // 缓存
     private var latestAirRssi: String? = null
     private var latestAirSnr: String? = null
     private var latestGndRssi: String? = null
@@ -45,10 +47,11 @@ class MainActivity : AppCompatActivity() {
             val total = intent.getIntExtra("TOTAL_PACKETS", 0)
             val hz = intent.getIntExtra("HZ", 0)
 
-            latestAirRssi = intent.getStringExtra("AIR_RSSI")
-            latestAirSnr = intent.getStringExtra("AIR_SNR")
-            latestGndRssi = intent.getStringExtra("GND_RSSI")
-            latestGndSnr = intent.getStringExtra("GND_SNR")
+            // ✅ 用 getStringExtra（广播发的是 String）
+            latestAirRssi = intent.getStringExtra("AIR_RSSI") ?: "110"
+            latestAirSnr = intent.getStringExtra("AIR_SNR") ?: "0"
+            latestGndRssi = intent.getStringExtra("GND_RSSI") ?: "110"
+            latestGndSnr = intent.getStringExtra("GND_SNR") ?: "0"
 
             updateSignalBars()
 
@@ -87,13 +90,13 @@ class MainActivity : AppCompatActivity() {
         airSignalLabel.text = if (airQ == SignalQuality.DISCONNECTED) {
             "✕ 断链"
         } else {
-            "rssi=${latestAirRssi ?: "--"} snr=${latestAirSnr ?: "--"}"
+            "rssi=${latestAirRssi} snr=${latestAirSnr}"
         }
 
         gndSignalLabel.text = if (gndQ == SignalQuality.DISCONNECTED) {
             "✕ 断链"
         } else {
-            "rssi=${latestGndRssi ?: "--"} snr=${latestGndSnr ?: "--"}"
+            "rssi=${latestGndRssi} snr=${latestGndSnr}"
         }
 
         overallSignalLabel.text = if (overallQ == SignalQuality.DISCONNECTED) {
@@ -158,7 +161,7 @@ class MainActivity : AppCompatActivity() {
                 putExtra("IP", ipEdit.text.toString())
             }
 
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
+            if (Build.VERSION.SDK_INT >= 26) {
                 startForegroundService(serviceIntent)
             } else {
                 startService(serviceIntent)
@@ -168,7 +171,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         stopBtn.setOnClickListener {
-            stopService(Intent(this, FloatService::class.java))
+            // 通知 FloatService 停止
+            val intent = Intent(this, FloatService::class.java)
+            stopService(intent)
             Toast.makeText(this, "监听已停止，CSV表格已封存", Toast.LENGTH_SHORT).show()
         }
 
