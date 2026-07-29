@@ -33,6 +33,8 @@ class MainActivity : AppCompatActivity() {
     private var latestAirSnr: Float? = null
     private var latestGndRssi: Float? = null
     private var latestGndSnr: Float? = null
+    private var latestAirHasSnr = false
+    private var latestGndHasSnr = false
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -47,8 +49,8 @@ class MainActivity : AppCompatActivity() {
                 airSignalLabel.text = "--"
                 gndSignalLabel.text = "--"
                 overallSignalLabel.text = "等待数据..."
-                latestAirRssi = null; latestAirSnr = null
-                latestGndRssi = null; latestGndSnr = null
+                latestAirRssi = null; latestAirSnr = null; latestAirHasSnr = false
+                latestGndRssi = null; latestGndSnr = null; latestGndHasSnr = false
                 return
             }
 
@@ -60,11 +62,15 @@ class MainActivity : AppCompatActivity() {
             val airSnr = intent.getFloatExtra("AIR_SNR", Float.NaN).let { if (it.isNaN()) null else it }
             val gndRssi = intent.getFloatExtra("GND_RSSI", Float.NaN).let { if (it.isNaN()) null else it }
             val gndSnr = intent.getFloatExtra("GND_SNR", Float.NaN).let { if (it.isNaN()) null else it }
+            val airHasSnr = intent.getBooleanExtra("AIR_HAS_SNR", latestAirHasSnr)
+            val gndHasSnr = intent.getBooleanExtra("GND_HAS_SNR", latestGndHasSnr)
 
             if (airRssi != null) latestAirRssi = airRssi
             if (airSnr != null) latestAirSnr = airSnr
             if (gndRssi != null) latestGndRssi = gndRssi
             if (gndSnr != null) latestGndSnr = gndSnr
+            latestAirHasSnr = airHasSnr
+            latestGndHasSnr = gndHasSnr
 
             updateSignalBars()
 
@@ -78,17 +84,44 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSignalBars() {
-        val airQ = SignalQuality.fromRssiSnr(latestAirRssi, latestAirSnr)
-        val gndQ = SignalQuality.fromRssiSnr(latestGndRssi, latestGndSnr)
+        // 断链判定：SNR=0 或 RSSI=110
+        val airDisconnected = (latestAirSnr == 0f) || (latestAirRssi == 110f)
+        val gndDisconnected = (latestGndSnr == 0f) || (latestGndRssi == 110f)
+
+        val airQ = if (airDisconnected) SignalQuality.DISCONNECTED
+                   else SignalQuality.fromRssiSnr(latestAirRssi, latestAirSnr, latestAirHasSnr)
+        val gndQ = if (gndDisconnected) SignalQuality.DISCONNECTED
+                   else SignalQuality.fromRssiSnr(latestGndRssi, latestGndSnr, latestGndHasSnr)
         val overallQ = SignalQuality.worse(airQ, gndQ)
 
         airSignalBars.setQuality(airQ)
         gndSignalBars.setQuality(gndQ)
         overallSignalBars.setQuality(overallQ)
 
-        airSignalLabel.text = "${airQ.bars}格/${airQ.label}\nrssi=${latestAirRssi?.toInt() ?: "--"} snr=${latestAirSnr?.toInt() ?: "--"}"
-        gndSignalLabel.text = "${gndQ.bars}格/${gndQ.label}\nrssi=${latestGndRssi?.toInt() ?: "--"} snr=${latestGndSnr?.toInt() ?: "--"}"
-        overallSignalLabel.text = "${overallQ.bars}格 · ${overallQ.label}"
+        // 断链时显示 ✕
+        if (airQ.isDisconnected) {
+            airSignalLabel.text = "✕ 断链"
+        } else {
+            airSignalLabel.text = "${airQ.bars}格/${airQ.label}\nrssi=${latestAirRssi?.toInt() ?: "--"} snr=${latestAirSnr?.toInt() ?: "--"}"
+        }
+        if (gndQ.isDisconnected) {
+            gndSignalLabel.text = "✕ 断链"
+        } else {
+            gndSignalLabel.text = "${gndQ.bars}格/${gndQ.label}\nrssi=${latestGndRssi?.toInt() ?: "--"} snr=${latestGndSnr?.toInt() ?: "--"}"
+        }
+        overallSignalLabel.text = if (overallQ.isDisconnected) "✕ 断链" else "${overallQ.bars}格 · ${overallQ.label}"
+
+        // 弹窗数据
+        airSignalBars.setDetailValues(
+            latestAirRssi?.toInt()?.toString() ?: "--",
+            "--",  // airRssi2 主界面暂不单独解析，悬浮窗里有
+            latestAirSnr?.toInt()?.toString() ?: "--"
+        )
+        gndSignalBars.setDetailValues(
+            latestGndRssi?.toInt()?.toString() ?: "--",
+            "--",
+            latestGndSnr?.toInt()?.toString() ?: "--"
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
