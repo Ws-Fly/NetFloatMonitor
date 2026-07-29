@@ -12,7 +12,6 @@ class FloatService : Service() {
 
     private var running = false
     private var socket: DatagramSocket? = null
-    private var receiveThread: Thread? = null
     private var floatView: FloatView? = null
 
     companion object {
@@ -25,41 +24,42 @@ class FloatService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        floatView = FloatView(this) // ✅ 确保这里只有 1 个参数
+        floatView = FloatView(this)
         floatView?.show()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!running) {
             running = true
-            receiveThread = Thread {
-                try {
-                    socket = DatagramSocket(8888)
-                    val buffer = ByteArray(1024)
-                    while (running) {
-                        val packet = DatagramPacket(buffer, buffer.size)
-                        socket?.receive(packet)
-                        val json = String(packet.data, 0, packet.length, Charset.forName("UTF-8"))
-                        handleJson(json)
-                    }
-                } catch (e: Exception) {
-                    Log.e("FloatService", "UDP error", e)
-                }
-            }.also { it.start() }
+            startUdp()
         }
         return START_STICKY
     }
 
+    private fun startUdp() {
+        Thread {
+            try {
+                socket = DatagramSocket(8888)
+                val buffer = ByteArray(1024)
+                while (running) {
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    socket?.receive(packet)
+                    val json = String(packet.data, 0, packet.length, Charset.forName("UTF-8"))
+                    handleJson(json)
+                }
+            } catch (e: Exception) {
+                Log.e("FloatService", "UDP error", e)
+            }
+        }.start()
+    }
+
     private fun handleJson(json: String) {
-        // 假设你的 JSON 格式是 {"rssi1_a":"72","snr_a":"20","rssi1_g":"88","snr_g":"12"}
-        // 如果解析失败，默认给 DISCONNECTED
         var airRssi = "110"
         var airSnr = "0"
         var gndRssi = "110"
         var gndSnr = "0"
 
         try {
-            // 简单解析逻辑，如果不对请按你的实际 JSON 调整
             if (json.contains("rssi1_a")) {
                 airRssi = json.substringAfter("\"rssi1_a\":\"").substringBefore("\"")
             }
@@ -72,14 +72,10 @@ class FloatService : Service() {
             if (json.contains("snr_g")) {
                 gndSnr = json.substringAfter("\"snr_g\":\"").substringBefore("\"")
             }
-        } catch (e: Exception) {
-            Log.e("FloatService", "Parse error", e)
-        }
+        } catch (_: Exception) {}
 
-        // ✅ 关键修复 1：FloatView.update 只传 4 个 String
         floatView?.update(airRssi, airSnr, gndRssi, gndSnr)
 
-        // 广播给 MainActivity
         val intent = Intent(ACTION_SIGNAL_UPDATE).apply {
             putExtra(EXTRA_AIR_RSSI, airRssi)
             putExtra(EXTRA_AIR_SNR, airSnr)
@@ -91,11 +87,7 @@ class FloatService : Service() {
 
     override fun onDestroy() {
         running = false
-        receiveThread?.interrupt()
-        receiveThread = null
         try { socket?.close() } catch (_: Exception) {}
-        socket = null
-        floatView?.remove()
         floatView = null
         super.onDestroy()
     }
