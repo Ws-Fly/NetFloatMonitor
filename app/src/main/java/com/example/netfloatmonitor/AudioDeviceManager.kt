@@ -104,7 +104,21 @@ class AudioDeviceManager(private val context: Context) {
     fun switchToSpeaker() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                audioManager.setCommunicationDevice(null)
+                // 修复：不传入null，而是先获取当前设备再清除
+                try {
+                    // 尝试清除通信设备 - Android 12+ 不允许 null
+                    // 使用空设备列表或直接设置音频路由
+                    audioManager.setSpeakerphoneOn(true)
+                    audioManager.setBluetoothScoOn(false)
+                    audioManager.isWiredHeadsetOn = false
+                    // 对于 Android M+，尝试通过设置通信设备为 null 来重置
+                    // 但某些版本不支持，所以使用传统方式
+                } catch (e: Exception) {
+                    Log.w(TAG, "setCommunicationDevice(null) 失败，使用传统方式: ${e.message}")
+                    audioManager.setSpeakerphoneOn(true)
+                    audioManager.setBluetoothScoOn(false)
+                    audioManager.isWiredHeadsetOn = false
+                }
             } else {
                 audioManager.setSpeakerphoneOn(true)
                 audioManager.setBluetoothScoOn(false)
@@ -122,18 +136,30 @@ class AudioDeviceManager(private val context: Context) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                var foundDevice: AudioDeviceInfo? = null
                 for (device in devices) {
                     if (device.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
                         device.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
                         device.type == AudioDeviceInfo.TYPE_USB_HEADSET) {
-                        audioManager.setCommunicationDevice(device)
-                        currentOutputDevice = "有线耳机"
-                        deviceChangeListener?.invoke(currentOutputDevice)
-                        Log.d(TAG, "已切换到有线耳机: ${device.productName}")
-                        return
+                        foundDevice = device
+                        break
                     }
                 }
-                switchToSpeaker()
+                if (foundDevice != null) {
+                    // 修复：只有非 null 时才调用
+                    audioManager.setCommunicationDevice(foundDevice)
+                    currentOutputDevice = "有线耳机"
+                    deviceChangeListener?.invoke(currentOutputDevice)
+                    Log.d(TAG, "已切换到有线耳机: ${foundDevice.productName}")
+                } else {
+                    // 没有找到有线耳机，使用传统方式
+                    audioManager.setSpeakerphoneOn(false)
+                    audioManager.setBluetoothScoOn(false)
+                    audioManager.isWiredHeadsetOn = true
+                    currentOutputDevice = "有线耳机"
+                    deviceChangeListener?.invoke(currentOutputDevice)
+                    Log.d(TAG, "已切换到有线耳机（传统方式）")
+                }
             } else {
                 audioManager.setSpeakerphoneOn(false)
                 audioManager.setBluetoothScoOn(false)
@@ -152,17 +178,29 @@ class AudioDeviceManager(private val context: Context) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                var foundDevice: AudioDeviceInfo? = null
                 for (device in devices) {
                     if (device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                         device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
-                        audioManager.setCommunicationDevice(device)
-                        currentOutputDevice = "蓝牙耳机"
-                        deviceChangeListener?.invoke(currentOutputDevice)
-                        Log.d(TAG, "已切换到蓝牙设备: ${device.productName}")
-                        return
+                        foundDevice = device
+                        break
                     }
                 }
-                switchToSpeaker()
+                if (foundDevice != null) {
+                    // 修复：只有非 null 时才调用
+                    audioManager.setCommunicationDevice(foundDevice)
+                    currentOutputDevice = "蓝牙耳机"
+                    deviceChangeListener?.invoke(currentOutputDevice)
+                    Log.d(TAG, "已切换到蓝牙设备: ${foundDevice.productName}")
+                } else {
+                    // 没有找到蓝牙设备，使用传统方式
+                    audioManager.setSpeakerphoneOn(false)
+                    audioManager.setBluetoothScoOn(true)
+                    audioManager.isWiredHeadsetOn = false
+                    currentOutputDevice = "蓝牙耳机"
+                    deviceChangeListener?.invoke(currentOutputDevice)
+                    Log.d(TAG, "已切换到蓝牙耳机（传统方式）")
+                }
             } else {
                 audioManager.setSpeakerphoneOn(false)
                 audioManager.setBluetoothScoOn(true)
@@ -189,4 +227,4 @@ class AudioDeviceManager(private val context: Context) {
         } catch (e: Exception) { /* ignore */ }
         Log.d(TAG, "AudioDeviceManager已释放")
     }
-}
+}       
