@@ -1,364 +1,50 @@
-<?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#F5F5F5"
-    android:fillViewport="true">
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+android {
+    namespace 'com.example.netfloatmonitor'
+    compileSdk 34
 
-        <!-- 标题栏 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:background="#2196F3"
-            android:gravity="center_vertical"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp">
+    defaultConfig {
+        applicationId "com.example.netfloatmonitor"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
 
-            <ImageButton
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@android:color/transparent"
-                android:src="@android:drawable/ic_menu_revert"
-                android:contentDescription="返回"
-                android:onClick="finish" />
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="语音对讲设置"
-                android:textColor="#FFFFFF"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:gravity="center" />
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a"
+        }
+    }
 
-            <View
-                android:layout_width="40dp"
-                android:layout_height="40dp" />
-        </LinearLayout>
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
 
-        <!-- 组播设置 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="#FFFFFF"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:elevation="4dp">
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="📡 组播设置"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="#333333" />
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="组播地址"
-                android:textSize="14sp"
-                android:textColor="#666666" />
-
-            <EditText
-                android:id="@+id/etMulticastIp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="224.0.0.1"
-                android:inputType="text"
-                android:background="@android:drawable/editbox_background"
-                android:padding="12dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="组播端口"
-                android:textSize="14sp"
-                android:textColor="#666666" />
-
-            <EditText
-                android:id="@+id/etMulticastPort"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="50000"
-                android:inputType="number"
-                android:background="@android:drawable/editbox_background"
-                android:padding="12dp" />
-        </LinearLayout>
-
-        <!-- 音频参数 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="#FFFFFF"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:elevation="4dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="🎵 音频参数"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="#333333" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="编解码格式"
-                android:textSize="14sp"
-                android:textColor="#666666" />
-
-            <AutoCompleteTextView
-                android:id="@+id/actvCodec"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="PCM"
-                android:background="@android:drawable/editbox_background"
-                android:padding="12dp"
-                android:inputType="none" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="采样率"
-                android:textSize="14sp"
-                android:textColor="#666666" />
-
-            <AutoCompleteTextView
-                android:id="@+id/actvSampleRate"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="8kHz"
-                android:background="@android:drawable/editbox_background"
-                android:padding="12dp"
-                android:inputType="none" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="包大小"
-                android:textSize="14sp"
-                android:textColor="#666666" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="60ms"
-                android:background="@android:drawable/editbox_background"
-                android:padding="12dp"
-                android:textColor="#999999" />
-        </LinearLayout>
-
-        <!-- 提示音开关 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="#FFFFFF"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:elevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="启用提示音"
-                    android:textSize="15sp"
-                    android:textColor="#333333" />
-
-                <Switch
-                    android:id="@+id/switchPrompt"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:checked="true" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- 状态显示 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="#FFFFFF"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:elevation="4dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="📊 实时状态"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="#333333" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="当前状态"
-                    android:textSize="14sp"
-                    android:textColor="#666666" />
-
-                <TextView
-                    android:id="@+id/tvVoiceStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="○ 未连接"
-                    android:textSize="14sp"
-                    android:textColor="#E74C3C" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="当前角色"
-                    android:textSize="14sp"
-                    android:textColor="#666666" />
-
-                <TextView
-                    android:id="@+id/tvVoiceRole"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="观察者 🎧"
-                    android:textSize="14sp"
-                    android:textColor="#3498DB" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="音频输出"
-                    android:textSize="14sp"
-                    android:textColor="#666666" />
-
-                <TextView
-                    android:id="@+id/tvAudioDevice"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="📱 扬声器"
-                    android:textSize="14sp"
-                    android:textColor="#888888" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- 操作按钮 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/btnVoiceStart"
-                android:layout_width="0dp"
-                android:layout_height="56dp"
-                android:layout_weight="1"
-                android:layout_marginEnd="8dp"
-                android:text="启动语音"
-                android:textSize="16sp"
-                android:backgroundTint="#4CAF50"
-                android:textColor="#FFFFFF" />
-
-            <Button
-                android:id="@+id/btnVoiceStop"
-                android:layout_width="0dp"
-                android:layout_height="56dp"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:text="停止语音"
-                android:textSize="16sp"
-                android:backgroundTint="#E74C3C"
-                android:textColor="#FFFFFF"
-                android:enabled="false" />
-        </LinearLayout>
-
-        <!-- PTT 按钮 -->
-        <Button
-            android:id="@+id/btnPtt"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:layout_marginTop="8dp"
-            android:text="静音/取消静音"
-            android:textSize="16sp"
-            android:backgroundTint="#FF9800"
-            android:textColor="#FFFFFF"
-            android:enabled="false" />
-
-        <!-- 提示信息 -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="role=0 时自动开启麦克风讲话"
-            android:textSize="12sp"
-            android:textColor="#888888"
-            android:gravity="center" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="role=1 时仅收听"
-            android:textSize="12sp"
-            android:textColor="#888888"
-            android:gravity="center" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="手动按钮可临时覆盖上述行为"
-            android:textSize="12sp"
-            android:textColor="#888888"
-            android:gravity="center"
-            android:layout_marginBottom="16dp" />
-
-    </LinearLayout>
-</ScrollView>
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+}
