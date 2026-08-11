@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">NetFloatMonitor</string>
     
+    <!-- 语音对讲相关 -->
     <string name="voice_settings_title">语音对讲设置</string>
     <string name="voice_multicast_ip">组播地址</string>
     <string name="voice_multicast_port">组播端口</string>
