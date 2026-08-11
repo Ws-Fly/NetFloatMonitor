@@ -110,12 +110,10 @@ class MainActivity : AppCompatActivity() {
             clearLog()
         }
 
-        // ===== 语音对讲入口 =====
+        // ===== 新增：语音对讲设置入口 =====
         btnVoiceSettings.setOnClickListener {
-            Toast.makeText(this, "语音对讲功能开发中...", Toast.LENGTH_SHORT).show()
-            // 暂时注释掉，避免闪退
-            // val intent = Intent(this, VoiceSettingsActivity::class.java)
-            // startActivity(intent)
+            val intent = Intent(this, VoiceSettingsActivity::class.java)
+            startActivity(intent)
         }
     }
 
