@@ -37,8 +37,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
     private var currentRole = 1
     private var isMuted = false
     private var isPilot = false
-    
-    // 权限请求码
+
     private val REQUEST_RECORD_AUDIO = 1001
 
     private val voiceStatusReceiver = object : BroadcastReceiver() {
@@ -88,7 +87,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
         setupListeners()
         updateUI()
         
-        // 检查录音权限
         checkRecordPermission()
     }
 
@@ -134,7 +132,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             actvSampleRate.setText(sp.getString("sample_rate", getString(R.string.voice_sample_8k)))
             switchPrompt.isChecked = sp.getBoolean("prompt_enabled", true)
         } catch (e: Exception) {
-            // SharedPreferences 异常时使用默认值
             etMulticastIp.setText("224.0.0.1")
             etMulticastPort.setText("50000")
             actvCodec.setText(getString(R.string.voice_codec_pcm))
@@ -155,7 +152,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 apply()
             }
         } catch (e: Exception) {
-            // 忽略保存失败
+            // 忽略
         }
     }
 
@@ -171,7 +168,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
 
     private fun setupListeners() {
         btnVoiceStart.setOnClickListener {
-            // 检查录音权限
             if (!checkRecordPermission()) {
                 requestRecordPermission()
                 return@setOnClickListener
