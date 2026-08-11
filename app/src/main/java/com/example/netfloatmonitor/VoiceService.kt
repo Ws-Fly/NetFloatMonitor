@@ -64,7 +64,7 @@ class VoiceService : Service() {
     private var packetSeq: Int = 0
     
     private lateinit var promptPlayer: VoicePromptPlayer
-    private lateinit var audioDeviceManager: AudioManager
+    private lateinit var audioDeviceManager: AudioDeviceManager
     
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentRoleFromJson: Int = 1
@@ -100,7 +100,7 @@ class VoiceService : Service() {
         Log.d(TAG, "VoiceService onCreate")
         createNotificationChannel()
         promptPlayer = VoicePromptPlayer(this)
-        audioDeviceManager = AudioManager(this)
+        audioDeviceManager = AudioDeviceManager(this)
         audioDeviceManager.setDeviceChangeListener { device ->
             Log.d(TAG, "音频设备切换: $device")
             broadcastDeviceChange(device)
@@ -291,7 +291,7 @@ class VoiceService : Service() {
             PCM_ENCODING
         )
 
-        if (minBufferSize == AudioRecord.ERROR || minBufferSize == AudioRecord.ERROR_BAD_VALUE) {
+        if (minBufferSize <= 0) {
             Log.e(TAG, "获取AudioRecord最小缓冲区失败")
             return
         }
@@ -332,7 +332,7 @@ class VoiceService : Service() {
             PCM_ENCODING
         )
 
-        if (minBufferSize == AudioTrack.ERROR || minBufferSize == AudioTrack.ERROR_BAD_VALUE) {
+        if (minBufferSize <= 0) {
             Log.e(TAG, "获取AudioTrack最小缓冲区失败")
             return
         }
