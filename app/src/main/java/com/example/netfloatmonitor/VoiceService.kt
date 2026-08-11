@@ -11,7 +11,6 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -74,11 +73,11 @@ class VoiceService : Service() {
     private val jitterBuffer = mutableListOf<ByteArray>()
     private val MAX_JITTER_BUFFER = 3
 
-    // ===== 组播锁 =====
-    private var multicastLock: WifiManager.MulticastLock? = null
-
-    // ===== 本机 IP 列表（用于过滤自己发送的包） =====
+    // ===== 本机 IP 列表 =====
     private val localIpAddresses = mutableListOf<String>()
+    
+    // ===== 当前使用的网卡 =====
+    private var selectedNetworkInterface: NetworkInterface? = null
 
     private val roleReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -108,12 +107,8 @@ class VoiceService : Service() {
         Log.d(TAG, "VoiceService onCreate")
         createNotificationChannel()
         
-        // ===== 获取所有本机 IP =====
-        collectLocalIpAddresses()
-        Log.d(TAG, "本机 IP 列表: $localIpAddresses")
-        
-        // ===== 获取组播锁 =====
-        acquireMulticastLock()
+        // ===== 获取本机 IP 和网卡 =====
+        collectNetworkInfo()
         
         promptPlayer = VoicePromptPlayer(this)
         audioDeviceManager = AudioDeviceManager(this)
@@ -132,64 +127,29 @@ class VoiceService : Service() {
         )
     }
 
-    // ===== 获取本机所有 IP 地址 =====
-    private fun collectLocalIpAddresses() {
+    // ===== 获取网络信息 =====
+    private fun collectNetworkInfo() {
         try {
             val networkInterfaces = NetworkInterface.getNetworkInterfaces()
             while (networkInterfaces.hasMoreElements()) {
-                val networkInterface = networkInterfaces.nextElement()
-                val addresses = networkInterface.inetAddresses
+                val ni = networkInterfaces.nextElement()
+                val addresses = ni.inetAddresses
                 while (addresses.hasMoreElements()) {
                     val address = addresses.nextElement()
                     val hostAddress = address.hostAddress ?: continue
-                    // 只收集 IPv4 地址，过滤掉 127.0.0.1
                     if (!hostAddress.contains(":") && !hostAddress.startsWith("127.")) {
                         localIpAddresses.add(hostAddress)
+                        // 记录第一个非回环网卡
+                        if (selectedNetworkInterface == null && ni.isUp) {
+                            selectedNetworkInterface = ni
+                            Log.d(TAG, "✅ 选中网卡: ${ni.displayName}, IP: $hostAddress")
+                        }
                     }
                 }
             }
+            Log.d(TAG, "本机 IP 列表: $localIpAddresses")
         } catch (e: Exception) {
-            Log.e(TAG, "获取本机 IP 失败: ${e.message}")
-            // 备用方案
-            try {
-                val localHost = InetAddress.getLocalHost()
-                localIpAddresses.add(localHost.hostAddress ?: "127.0.0.1")
-            } catch (e2: Exception) {
-                localIpAddresses.add("127.0.0.1")
-            }
-        }
-        Log.d(TAG, "本机 IP 列表: $localIpAddresses")
-    }
-
-    // ===== 获取组播锁 =====
-    private fun acquireMulticastLock() {
-        try {
-            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            if (wifiManager != null) {
-                multicastLock = wifiManager.createMulticastLock("NetFloatMonitor_MulticastLock")
-                multicastLock?.setReferenceCounted(false)
-                multicastLock?.acquire()
-                Log.d(TAG, "✅ 组播锁已获取")
-            } else {
-                Log.w(TAG, "⚠️ WifiManager 不可用，可能使用有线网络，继续尝试")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "⚠️ 获取组播锁失败（可能没有 WiFi）: ${e.message}")
-        }
-    }
-
-    // ===== 释放组播锁 =====
-    private fun releaseMulticastLock() {
-        try {
-            multicastLock?.let {
-                if (it.isHeld) {
-                    it.release()
-                    Log.d(TAG, "✅ 组播锁已释放")
-                }
-            }
-            multicastLock = null
-        } catch (e: Exception) {
-            Log.e(TAG, "释放组播锁异常: ${e.message}")
+            Log.e(TAG, "获取网络信息失败: ${e.message}")
         }
     }
 
@@ -233,11 +193,23 @@ class VoiceService : Service() {
         try {
             startForeground(NOTIFICATION_ID, createNotification())
 
+            // ===== 创建组播Socket并绑定到指定网卡 =====
             multicastSocket = MulticastSocket(multicastPort).apply {
                 reuseAddress = true
-                setTimeToLive(32)  // ===== 增大 TTL 确保跨网段 =====
+                setTimeToLive(32)
+                
+                // ===== 关键修复：绑定到选中的网卡 =====
+                selectedNetworkInterface?.let { ni ->
+                    try {
+                        setNetworkInterface(ni)
+                        Log.d(TAG, "✅ 组播Socket已绑定到网卡: ${ni.displayName}")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "绑定网卡失败: ${e.message}")
+                    }
+                }
+                
                 joinGroup(multicastGroup)
-                Log.d(TAG, "组播已加入: ${multicastGroup?.hostAddress}:$multicastPort")
+                Log.d(TAG, "✅ 组播已加入: ${multicastGroup?.hostAddress}:$multicastPort")
             }
 
             initAudioTrack()
@@ -444,9 +416,6 @@ class VoiceService : Service() {
         }
     }
 
-    // ================================================================
-    // ===== 接收线程（关键修复：忽略自己发送的包，消除回响） =====
-    // ================================================================
     private fun startReceiveThread() {
         receiveThread = thread(name = "VoiceReceiveThread") {
             val buffer = ByteArray(4096)
@@ -458,10 +427,8 @@ class VoiceService : Service() {
                 try {
                     multicastSocket?.receive(packet)
                     
-                    // ===== 关键修复：获取发送者 IP =====
                     val senderIp = packet.address?.hostAddress ?: ""
                     
-                    // ===== 检查是否为自己发送的包（消除回响） =====
                     var isSelf = false
                     for (localIp in localIpAddresses) {
                         if (senderIp == localIp) {
@@ -471,13 +438,7 @@ class VoiceService : Service() {
                     }
                     
                     if (isSelf) {
-                        // 忽略自己发送的数据包，消除回响
                         continue
-                    }
-                    
-                    // ===== 可选：打印接收到的包（调试用，每10包打印一次） =====
-                    if (packetSeq % 10 == 0) {
-                        Log.d(TAG, "📥 收到来自 $senderIp 的组播包, 大小: ${packet.length} 字节")
                     }
                     
                     val data = ByteArray(packet.length)
@@ -542,9 +503,6 @@ class VoiceService : Service() {
         }
     }
 
-    // ================================================================
-    // ===== 发送线程（添加发送日志，便于 Wireshark 验证） =====
-    // ================================================================
     private fun startSendThread() {
         sendThread?.interrupt()
         sendThread = thread(name = "VoiceSendThread") {
@@ -608,7 +566,6 @@ class VoiceService : Service() {
                             
                             multicastSocket?.send(packet)
                             
-                            // ===== 每10包打印一次日志 =====
                             sendCount++
                             if (sendCount % 10 == 0) {
                                 Log.d(TAG, "📤 已发送组播包 #$packetSeq, 大小: ${packetData.size} 字节 -> ${multicastGroup?.hostAddress}:$multicastPort")
@@ -688,7 +645,6 @@ class VoiceService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopVoice()
-        releaseMulticastLock()
         audioDeviceManager.release()
         try {
             LocalBroadcastManager.getInstance(this).unregisterReceiver(roleReceiver)
