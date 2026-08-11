@@ -3,7 +3,6 @@ package com.example.netfloatmonitor
 import android.util.Log
 import java.net.DatagramPacket
 import java.net.DatagramSocket
-import java.lang.Exception
 
 class UdpReceiver(private val port: Int, private val onData: (String) -> Unit) {
 
@@ -30,7 +29,6 @@ class UdpReceiver(private val port: Int, private val onData: (String) -> Unit) {
 
                     Log.d("UdpReceiver", "收到来自 $ip 的原始数据: $data")
                     
-                    // 直接回调分发所有收到的网络数据，不做强行丢弃
                     onData(data)
                 }
             } catch (e: Exception) {
