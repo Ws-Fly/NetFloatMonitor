@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity() {
             clearLog()
         }
 
-        // ===== 新增：语音对讲设置入口 =====
+        // 语音对讲设置入口
         btnVoiceSettings.setOnClickListener {
             val intent = Intent(this, VoiceSettingsActivity::class.java)
             startActivity(intent)
