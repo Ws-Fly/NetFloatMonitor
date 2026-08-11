@@ -51,7 +51,7 @@
         android:layout_marginTop="4dp"
         android:text="清除日志" />
 
-    <!-- ===== 新增：语音对讲设置入口 ===== -->
+    <!-- 语音对讲设置入口 -->
     <Button
         android:id="@+id/btnVoiceSettings"
         android:layout_width="match_parent"
