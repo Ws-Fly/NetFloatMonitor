@@ -1,107 +1,113 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout 
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="20dp">
+    android:fillViewport="true">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="NetFloat Monitor"
-        android:textStyle="bold"
-        android:textSize="24sp" />
-
-    <EditText
-        android:id="@+id/editIp"
+    <LinearLayout 
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:hint="目标IP"
-        android:text="192.168.1.100" />
-
-    <EditText
-        android:id="@+id/editPort"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="UDP端口"
-        android:inputType="number"
-        android:text="14550" />
-
-    <Button
-        android:id="@+id/startBtn"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="启动监控" />
-
-    <Button
-        android:id="@+id/stopBtn"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="停止监控" />
-
-    <Button
-        android:id="@+id/clearBtn"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="清除日志" />
-
-    <!-- 实时状态监控区面板 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
         android:orientation="vertical"
-        android:background="#F5F5F5"
-        android:padding="12dp">
+        android:padding="20dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="[ 实时状态面板 ]"
+            android:text="NetFloat Monitor"
             android:textStyle="bold"
-            android:textColor="#666666"
-            android:textSize="12sp" />
+            android:textSize="24sp" />
 
-        <TextView
-            android:id="@+id/tvStatusInfo"
+        <EditText
+            android:id="@+id/editIp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textColor="#333333"
-            android:textSize="14sp"
-            android:lineSpacingMultiplier="1.2"
-            android:text="链路状态: 待机\n当前文件: 未开启监控\n已收数据: 0 包 | 速率: 0 Hz" />
+            android:layout_marginTop="16dp"
+            android:hint="目标IP"
+            android:text="192.168.1.100" />
+
+        <EditText
+            android:id="@+id/editPort"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="UDP端口"
+            android:inputType="number"
+            android:text="14550" />
+
+        <Button
+            android:id="@+id/startBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="启动监控" />
+
+        <Button
+            android:id="@+id/stopBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="停止监控" />
+
+        <Button
+            android:id="@+id/clearBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="清除日志" />
+
+        <!-- 实时状态监控区面板 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:orientation="vertical"
+            android:background="#F5F5F5"
+            android:padding="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="[ 实时状态面板 ]"
+                android:textStyle="bold"
+                android:textColor="#666666"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tvStatusInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="#333333"
+                android:textSize="14sp"
+                android:lineSpacingMultiplier="1.2"
+                android:text="链路状态: 待机\n当前文件: 未开启监控\n已收数据: 0 包 | 速率: 0 Hz" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="16dp"
+            android:background="#DDDDDD" />
+
+        <!-- 语音对讲设置入口 - 使用明显样式 -->
+        <Button
+            android:id="@+id/btnVoiceSettings"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
+            android:text="🎤 语音对讲设置"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:backgroundTint="#2196F3"
+            android:textColor="#FFFFFF" />
+
+        <TextView
+            android:id="@+id/logPath"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textColor="#888888"
+            android:textSize="12sp" />
+
     </LinearLayout>
-
-    <!-- 分割线 -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="16dp"
-        android:background="#DDDDDD" />
-
-    <!-- 语音对讲设置入口 -->
-    <Button
-        android:id="@+id/btnVoiceSettings"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="🎤 语音对讲设置"
-        android:textSize="15sp"
-        android:backgroundTint="#2196F3" />
-
-    <TextView
-        android:id="@+id/logPath"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:textColor="#888888"
-        android:textSize="12sp" />
-
-</LinearLayout>
+</ScrollView>
