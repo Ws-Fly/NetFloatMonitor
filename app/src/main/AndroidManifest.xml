@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     
-    <!-- ===== 新增：语音对讲权限 ===== -->
+    <!-- 语音对讲权限 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -29,7 +29,6 @@
             </intent-filter>
         </activity>
 
-        <!-- ===== 新增：语音设置页面 ===== -->
         <activity
             android:name=".VoiceSettingsActivity"
             android:exported="false"
@@ -40,7 +39,6 @@
             android:foregroundServiceType="specialUse"
             android:exported="false" />
 
-        <!-- ===== 新增：语音服务 ===== -->
         <service
             android:name=".VoiceService"
             android:foregroundServiceType="dataSync"
