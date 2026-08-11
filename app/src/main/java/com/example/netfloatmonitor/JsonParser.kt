@@ -32,6 +32,7 @@ object JsonParser {
             airNoise = parseNoise(obj.optString("noiseFloor_a", "")),
             gndNoise = parseNoise(obj.optString("noiseFloor_g", "")),
             
+            // ===== 新增：解析 role 字段 =====
             role = obj.optInt("role", 1)
         )
     }
