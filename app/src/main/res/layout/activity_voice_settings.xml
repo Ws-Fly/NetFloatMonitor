@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#F5F5F5">
@@ -11,12 +10,14 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <androidx.appcompat.widget.Toolbar
+        <!-- 标题栏 - 使用简单LinearLayout替代Toolbar -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:background="#2196F3"
-            android:minHeight="?attr/actionBarSize"
-            android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar">
+            android:gravity="center_vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -25,257 +26,286 @@
                 android:textColor="#FFFFFF"
                 android:textSize="18sp"
                 android:textStyle="bold" />
-        </androidx.appcompat.widget.Toolbar>
+        </LinearLayout>
 
-        <com.google.android.material.card.MaterialCardView
+        <!-- 组播设置卡片 -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp">
+            android:background="#FFFFFF"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:elevation="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📡 组播设置"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="#333333" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:layout_marginTop="12dp"
+                android:orientation="vertical">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="📡 组播设置"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333" />
+                    android:text="@string/voice_multicast_ip"
+                    android:textSize="14sp"
+                    android:textColor="#666666" />
 
-                <com.google.android.material.textfield.TextInputLayout
+                <EditText
+                    android:id="@+id/etMulticastIp"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/etMulticastIp"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="@string/voice_multicast_ip"
-                        android:text="224.0.0.1"
-                        android:inputType="text" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/etMulticastPort"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="@string/voice_multicast_port"
-                        android:text="50000"
-                        android:inputType="number" />
-                </com.google.android.material.textfield.TextInputLayout>
+                    android:layout_marginTop="4dp"
+                    android:text="224.0.0.1"
+                    android:inputType="text"
+                    android:background="@android:drawable/editbox_background"
+                    android:padding="12dp" />
             </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:layout_marginTop="12dp"
+                android:orientation="vertical">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="🎵 音频参数"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333" />
+                    android:text="@string/voice_multicast_port"
+                    android:textSize="14sp"
+                    android:textColor="#666666" />
 
-                <com.google.android.material.textfield.TextInputLayout
+                <EditText
+                    android:id="@+id/etMulticastPort"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
-
-                    <AutoCompleteTextView
-                        android:id="@+id/actvCodec"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="@string/voice_codec"
-                        android:text="@string/voice_codec_pcm"
-                        android:inputType="none" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
-
-                    <AutoCompleteTextView
-                        android:id="@+id/actvSampleRate"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="@string/voice_sample_rate"
-                        android:text="@string/voice_sample_8k"
-                        android:inputType="none" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="@string/voice_packet_size"
-                        android:text="@string/voice_packet_size_60ms"
-                        android:enabled="false"
-                        android:focusable="false" />
-                </com.google.android.material.textfield.TextInputLayout>
+                    android:layout_marginTop="4dp"
+                    android:text="50000"
+                    android:inputType="number"
+                    android:background="@android:drawable/editbox_background"
+                    android:padding="12dp" />
             </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
 
-        <com.google.android.material.card.MaterialCardView
+        <!-- 音频参数设置卡片 -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp">
+            android:background="#FFFFFF"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:elevation="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🎵 音频参数"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="#333333" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/voice_enable_prompt"
-                        android:textSize="15sp"
-                        android:textColor="#333333" />
-
-                    <com.google.android.material.switchmaterial.SwitchMaterial
-                        android:id="@+id/switchPrompt"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:checked="true" />
-                </LinearLayout>
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:layout_marginTop="12dp"
+                android:orientation="vertical">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="📊 实时状态"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
+                    android:text="@string/voice_codec"
+                    android:textSize="14sp"
+                    android:textColor="#666666" />
+
+                <AutoCompleteTextView
+                    android:id="@+id/actvCodec"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/voice_codec_pcm"
+                    android:background="@android:drawable/editbox_background"
+                    android:padding="12dp"
+                    android:inputType="none" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/voice_sample_rate"
+                    android:textSize="14sp"
+                    android:textColor="#666666" />
+
+                <AutoCompleteTextView
+                    android:id="@+id/actvSampleRate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/voice_sample_8k"
+                    android:background="@android:drawable/editbox_background"
+                    android:padding="12dp"
+                    android:inputType="none" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/voice_packet_size"
+                    android:textSize="14sp"
+                    android:textColor="#666666" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/voice_packet_size_60ms"
+                    android:background="@android:drawable/editbox_background"
+                    android:padding="12dp"
+                    android:textColor="#999999" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 提示音开关卡片 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="#FFFFFF"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:elevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/voice_enable_prompt"
+                    android:textSize="15sp"
                     android:textColor="#333333" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <Switch
+                    android:id="@+id/switchPrompt"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/voice_status"
-                        android:textSize="14sp"
-                        android:textColor="#666666" />
-
-                    <TextView
-                        android:id="@+id/tvVoiceStatus"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="○ @string/voice_disconnected"
-                        android:textSize="14sp"
-                        android:textColor="#E74C3C" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/voice_role"
-                        android:textSize="14sp"
-                        android:textColor="#666666" />
-
-                    <TextView
-                        android:id="@+id/tvVoiceRole"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/voice_observer"
-                        android:textSize="14sp"
-                        android:textColor="#3498DB" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="音频输出"
-                        android:textSize="14sp"
-                        android:textColor="#666666" />
-
-                    <TextView
-                        android:id="@+id/tvAudioDevice"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="📱 扬声器"
-                        android:textSize="14sp"
-                        android:textColor="#888888" />
-                </LinearLayout>
+                    android:checked="true" />
             </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
 
+        <!-- 状态显示卡片 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="#FFFFFF"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:elevation="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📊 实时状态"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="#333333" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/voice_status"
+                    android:textSize="14sp"
+                    android:textColor="#666666" />
+
+                <TextView
+                    android:id="@+id/tvVoiceStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="○ 未连接"
+                    android:textSize="14sp"
+                    android:textColor="#E74C3C" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/voice_role"
+                    android:textSize="14sp"
+                    android:textColor="#666666" />
+
+                <TextView
+                    android:id="@+id/tvVoiceRole"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/voice_observer"
+                    android:textSize="14sp"
+                    android:textColor="#3498DB" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="音频输出"
+                    android:textSize="14sp"
+                    android:textColor="#666666" />
+
+                <TextView
+                    android:id="@+id/tvAudioDevice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📱 扬声器"
+                    android:textSize="14sp"
+                    android:textColor="#888888" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 操作按钮 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -304,6 +334,7 @@
                 android:enabled="false" />
         </LinearLayout>
 
+        <!-- PTT 按钮 -->
         <Button
             android:id="@+id/btnPtt"
             android:layout_width="match_parent"
@@ -314,6 +345,7 @@
             android:backgroundTint="#FF9800"
             android:enabled="false" />
 
+        <!-- 提示信息 -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
