@@ -25,6 +25,7 @@ data class LinkStatus(
     val airNoise: Array<String> = emptyArray(),
     val gndNoise: Array<String> = emptyArray(),
     
+    // ===== 新增 role 字段 =====
     val role: Int = 1
 ) {
     override fun equals(other: Any?): Boolean {
