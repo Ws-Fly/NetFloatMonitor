@@ -2,7 +2,8 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5">
+    android:background="#F5F5F5"
+    android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -10,7 +11,7 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- 标题栏 - 使用简单LinearLayout替代Toolbar -->
+        <!-- 标题栏 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="56dp"
@@ -19,13 +20,28 @@
             android:paddingStart="16dp"
             android:paddingEnd="16dp">
 
+            <ImageButton
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@android:color/transparent"
+                android:src="@android:drawable/ic_menu_revert"
+                android:contentDescription="返回"
+                android:onClick="onBackPressed" />
+
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="@string/voice_settings_title"
+                android:layout_weight="1"
+                android:text="语音对讲设置"
                 android:textColor="#FFFFFF"
                 android:textSize="18sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:gravity="center" />
+
+            <!-- 占位，保持对称 -->
+            <View
+                android:layout_width="40dp"
+                android:layout_height="40dp" />
         </LinearLayout>
 
         <!-- 组播设置卡片 -->
@@ -55,7 +71,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/voice_multicast_ip"
+                    android:text="组播地址"
                     android:textSize="14sp"
                     android:textColor="#666666" />
 
@@ -79,7 +95,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/voice_multicast_port"
+                    android:text="组播端口"
                     android:textSize="14sp"
                     android:textColor="#666666" />
 
@@ -122,7 +138,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/voice_codec"
+                    android:text="编解码格式"
                     android:textSize="14sp"
                     android:textColor="#666666" />
 
@@ -131,7 +147,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="@string/voice_codec_pcm"
+                    android:text="PCM"
                     android:background="@android:drawable/editbox_background"
                     android:padding="12dp"
                     android:inputType="none" />
@@ -146,7 +162,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/voice_sample_rate"
+                    android:text="采样率"
                     android:textSize="14sp"
                     android:textColor="#666666" />
 
@@ -155,7 +171,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="@string/voice_sample_8k"
+                    android:text="8kHz"
                     android:background="@android:drawable/editbox_background"
                     android:padding="12dp"
                     android:inputType="none" />
@@ -170,7 +186,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/voice_packet_size"
+                    android:text="包大小"
                     android:textSize="14sp"
                     android:textColor="#666666" />
 
@@ -178,7 +194,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="@string/voice_packet_size_60ms"
+                    android:text="60ms"
                     android:background="@android:drawable/editbox_background"
                     android:padding="12dp"
                     android:textColor="#999999" />
@@ -205,7 +221,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="@string/voice_enable_prompt"
+                    android:text="启用提示音"
                     android:textSize="15sp"
                     android:textColor="#333333" />
 
@@ -245,7 +261,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="@string/voice_status"
+                    android:text="当前状态"
                     android:textSize="14sp"
                     android:textColor="#666666" />
 
@@ -268,7 +284,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="@string/voice_role"
+                    android:text="当前角色"
                     android:textSize="14sp"
                     android:textColor="#666666" />
 
@@ -276,7 +292,7 @@
                     android:id="@+id/tvVoiceRole"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/voice_observer"
+                    android:text="观察者 🎧"
                     android:textSize="14sp"
                     android:textColor="#3498DB" />
             </LinearLayout>
@@ -318,9 +334,10 @@
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="8dp"
-                android:text="@string/voice_start"
+                android:text="启动语音"
                 android:textSize="16sp"
-                android:backgroundTint="#4CAF50" />
+                android:backgroundTint="#4CAF50"
+                android:textColor="#FFFFFF" />
 
             <Button
                 android:id="@+id/btnVoiceStop"
@@ -328,9 +345,10 @@
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
-                android:text="@string/voice_stop"
+                android:text="停止语音"
                 android:textSize="16sp"
                 android:backgroundTint="#E74C3C"
+                android:textColor="#FFFFFF"
                 android:enabled="false" />
         </LinearLayout>
 
@@ -340,9 +358,10 @@
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginTop="8dp"
-            android:text="@string/voice_ptt"
+            android:text="静音/取消静音"
             android:textSize="16sp"
             android:backgroundTint="#FF9800"
+            android:textColor="#FFFFFF"
             android:enabled="false" />
 
         <!-- 提示信息 -->
@@ -350,7 +369,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="@string/voice_hint_role_auto"
+            android:text="role=0 时自动开启麦克风讲话"
             android:textSize="12sp"
             android:textColor="#888888"
             android:gravity="center" />
@@ -358,7 +377,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/voice_hint_role_observer"
+            android:text="role=1 时仅收听"
             android:textSize="12sp"
             android:textColor="#888888"
             android:gravity="center" />
@@ -366,7 +385,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/voice_hint_ptt_override"
+            android:text="手动按钮可临时覆盖上述行为"
             android:textSize="12sp"
             android:textColor="#888888"
             android:gravity="center"
