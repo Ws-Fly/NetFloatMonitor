@@ -25,6 +25,8 @@ data class LinkStatus(
     val airNoise: Array<String> = emptyArray(),
     val gndNoise: Array<String> = emptyArray(),
     
+    // ===== 新增：语音角色字段 =====
+    // 0 = 飞行员（可讲话），1 = 观察者（仅收听）
     val role: Int = 1
 ) {
     override fun equals(other: Any?): Boolean {
