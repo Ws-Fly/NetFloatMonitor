@@ -103,7 +103,6 @@ class AudioDeviceManager(private val context: Context) {
 
     fun switchToSpeaker() {
         try {
-            // 使用传统方式切换，兼容所有 Android 版本
             audioManager.setSpeakerphoneOn(true)
             audioManager.setBluetoothScoOn(false)
             audioManager.isWiredHeadsetOn = false
@@ -118,7 +117,6 @@ class AudioDeviceManager(private val context: Context) {
 
     fun switchToHeadset() {
         try {
-            // 尝试使用新 API 找到并切换
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
                 for (device in devices) {
@@ -134,7 +132,6 @@ class AudioDeviceManager(private val context: Context) {
                 }
             }
             
-            // 新 API 没找到或失败，使用传统方式
             audioManager.setSpeakerphoneOn(false)
             audioManager.setBluetoothScoOn(false)
             audioManager.isWiredHeadsetOn = true
@@ -143,14 +140,12 @@ class AudioDeviceManager(private val context: Context) {
             Log.d(TAG, "已切换到有线耳机（传统方式）")
         } catch (e: Exception) {
             Log.e(TAG, "切换到有线耳机失败: ${e.message}")
-            // 降级到扬声器
             switchToSpeaker()
         }
     }
 
     fun switchToBluetooth() {
         try {
-            // 尝试使用新 API 找到并切换
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
                 for (device in devices) {
@@ -165,7 +160,6 @@ class AudioDeviceManager(private val context: Context) {
                 }
             }
             
-            // 新 API 没找到或失败，使用传统方式
             audioManager.setSpeakerphoneOn(false)
             audioManager.setBluetoothScoOn(true)
             audioManager.isWiredHeadsetOn = false
@@ -174,7 +168,6 @@ class AudioDeviceManager(private val context: Context) {
             Log.d(TAG, "已切换到蓝牙耳机（传统方式）")
         } catch (e: Exception) {
             Log.e(TAG, "切换到蓝牙失败: ${e.message}")
-            // 降级到扬声器
             switchToSpeaker()
         }
     }
