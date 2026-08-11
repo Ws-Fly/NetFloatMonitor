@@ -25,6 +25,7 @@ class FloatService : Service() {
     private var currentHz = 0
     private var statusTimer: Timer? = null
     
+    // ===== 新增：记录上一次的 role =====
     private var lastRole: Int = 1
     
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -69,6 +70,7 @@ class FloatService : Service() {
                 mainHandler.post {
                     floatView?.updateJsonDynamic(data)
                     
+                    // ===== 新增：检测 role 变化并广播 =====
                     try {
                         val obj = org.json.JSONObject(data)
                         val currentRole = obj.optInt("role", 1)
@@ -87,6 +89,7 @@ class FloatService : Service() {
         receiver?.start()
     }
 
+    // ===== 新增：发送角色变化广播 =====
     private fun sendRoleChangeBroadcast(role: Int) {
         val intent = Intent("com.example.netfloatmonitor.ROLE_CHANGE").apply {
             putExtra("ROLE", role)
