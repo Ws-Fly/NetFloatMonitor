@@ -105,19 +105,12 @@ class VoiceSettingsActivity : AppCompatActivity() {
     }
 
     private fun setupDropdowns() {
-        val codecOptions = arrayOf(
-            getString(R.string.voice_codec_pcm),
-            getString(R.string.voice_codec_g711),
-            getString(R.string.voice_codec_opus)
-        )
+        val codecOptions = arrayOf("PCM", "G.711", "Opus")
         val codecAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, codecOptions)
         actvCodec.setAdapter(codecAdapter)
         actvCodec.setOnClickListener { actvCodec.showDropDown() }
 
-        val sampleOptions = arrayOf(
-            getString(R.string.voice_sample_8k),
-            getString(R.string.voice_sample_16k)
-        )
+        val sampleOptions = arrayOf("8kHz", "16kHz")
         val sampleAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, sampleOptions)
         actvSampleRate.setAdapter(sampleAdapter)
         actvSampleRate.setOnClickListener { actvSampleRate.showDropDown() }
@@ -128,14 +121,14 @@ class VoiceSettingsActivity : AppCompatActivity() {
             val sp = getSharedPreferences("voice_config", Context.MODE_PRIVATE)
             etMulticastIp.setText(sp.getString("multicast_ip", "224.0.0.1"))
             etMulticastPort.setText(sp.getString("multicast_port", "50000"))
-            actvCodec.setText(sp.getString("codec", getString(R.string.voice_codec_pcm)))
-            actvSampleRate.setText(sp.getString("sample_rate", getString(R.string.voice_sample_8k)))
+            actvCodec.setText(sp.getString("codec", "PCM"))
+            actvSampleRate.setText(sp.getString("sample_rate", "8kHz"))
             switchPrompt.isChecked = sp.getBoolean("prompt_enabled", true)
         } catch (e: Exception) {
             etMulticastIp.setText("224.0.0.1")
             etMulticastPort.setText("50000")
-            actvCodec.setText(getString(R.string.voice_codec_pcm))
-            actvSampleRate.setText(getString(R.string.voice_sample_8k))
+            actvCodec.setText("PCM")
+            actvSampleRate.setText("8kHz")
             switchPrompt.isChecked = true
         }
     }
@@ -192,20 +185,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 ).show()
             } else if (isVoiceRunning && !isPilot) {
                 Toast.makeText(this, "⚠️ 观察者模式无法讲话", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        btnPtt.setOnLongClickListener {
-            if (isVoiceRunning && isPilot) {
-                if (isMuted) {
-                    isMuted = false
-                    broadcastPttState(isMuted)
-                    updatePttButton()
-                    Toast.makeText(this, "🎤 临时讲话（松开恢复静音）", Toast.LENGTH_SHORT).show()
-                }
-                true
-            } else {
-                false
             }
         }
     }
@@ -311,16 +290,16 @@ class VoiceSettingsActivity : AppCompatActivity() {
 
     private fun updateUI() {
         tvVoiceStatus.text = if (isVoiceRunning) {
-            "● ${getString(R.string.voice_connected)}"
+            "● 已连接"
         } else {
-            "○ ${getString(R.string.voice_disconnected)}"
+            "○ 未连接"
         }
         tvVoiceStatus.setTextColor(if (isVoiceRunning) 0xFF4CAF50.toInt() else 0xFFE74C3C.toInt())
 
         val roleText = if (currentRole == 0) {
-            getString(R.string.voice_pilot)
+            "飞行员 🎤"
         } else {
-            getString(R.string.voice_observer)
+            "观察者 🎧"
         }
         tvVoiceRole.text = roleText
         tvVoiceRole.setTextColor(if (currentRole == 0) 0xFF2ECC71.toInt() else 0xFF3498DB.toInt())
