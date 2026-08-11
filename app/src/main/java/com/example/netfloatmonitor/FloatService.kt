@@ -1,145 +1,187 @@
 package com.example.netfloatmonitor
 
-import android.app.Service
+import android.app.*
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
-import android.util.Log
+import android.os.Looper
 import android.view.WindowManager
+import androidx.core.app.NotificationCompat
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import android.util.Log
+import java.util.Timer
+import java.util.TimerTask
 
 class FloatService : Service() {
 
-    private var udpReceiver: UdpReceiver? = null
     private var floatView: FloatView? = null
-    private var wm: WindowManager? = null
-    private lateinit var params: WindowManager.LayoutParams
+    private var receiver: UdpReceiver? = null
+    private lateinit var logger: LogManager
 
     private var totalPackets = 0
+    private var packetsInLastSecond = 0
     private var currentHz = 0
-    private var lastCount = 0
-    private var lastTime = System.currentTimeMillis()
-
-    companion object {
-        const val ACTION_STATUS = "com.example.netfloatmonitor.STATUS_UPDATE"
-        const val EXTRA_AIR_RSSI = "AIR_RSSI"
-        const val EXTRA_AIR_SNR = "AIR_SNR"
-        const val EXTRA_GND_RSSI = "GND_RSSI"
-        const val EXTRA_GND_SNR = "GND_SNR"
-    }
+    private var statusTimer: Timer? = null
+    
+    private var lastRole: Int = 1
+    
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
-        wm = getSystemService(WINDOW_SERVICE) as WindowManager
-
-        params = WindowManager.LayoutParams().apply {
-            width = 1000
-            height = 600
-            type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                WindowManager.LayoutParams.TYPE_PHONE
-            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-            format = PixelFormat.TRANSLUCENT
-            gravity = android.view.Gravity.TOP or android.view.Gravity.START
-            x = 0
-            y = 200
-        }
-
-        floatView = FloatView(this).apply {
-            windowParams = params
-            windowManager = wm
-        }
-        wm?.addView(floatView, params)
-
-        Log.d("FloatService", "FloatService created")
+        logger = LogManager(this)
+        Log.d("FloatService", "Service onCreate 触发")
+        createNotificationChannel()
+        startForeground(1001, createNotification())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val port = intent?.getIntExtra("PORT", 16789) ?: 16789
-        startUdp(port)
-        return START_STICKY
-    }
-
-    private fun startUdp(port: Int) {
-        if (udpReceiver != null) return
-
-        udpReceiver = UdpReceiver(port) { data ->
-            totalPackets++
-
-            val now = System.currentTimeMillis()
-            val elapsed = now - lastTime
-            if (elapsed >= 1000) {
-                currentHz = ((totalPackets - lastCount) * 1000 / elapsed).toInt()
-                lastCount = totalPackets
-                lastTime = now
-            }
-
-            // 更新悬浮窗（主线程）
-            floatView?.post {
-                floatView?.updateJson(data)
-            }
-
-            // 解析 RSSI/SNR 并发广播给 MainActivity
-            try {
-                val obj = org.json.JSONObject(data)
-
-                fun pick(obj: org.json.JSONObject, vararg keys: String): String {
-                    for (k in keys) {
-                        if (obj.has(k)) return obj.getString(k)
-                    }
-                    return "110"
-                }
-
-                val airRssi = pick(obj, "rssi1_a", "rssi_a", "air_rssi1")
-                val airSnr = pick(obj, "snr_a", "air_snr")
-                val gndRssi = pick(obj, "rssi1_g", "rssi_g", "gnd_rssi1")
-                val gndSnr = pick(obj, "snr_g", "gnd_snr")
-
-                val statusIntent = Intent(ACTION_STATUS).apply {
-                    putExtra(EXTRA_AIR_RSSI, airRssi)
-                    putExtra(EXTRA_AIR_SNR, airSnr)
-                    putExtra(EXTRA_GND_RSSI, gndRssi)
-                    putExtra(EXTRA_GND_SNR, gndSnr)
-                    putExtra("TOTAL_PACKETS", totalPackets)
-                    putExtra("HZ", currentHz)
-                }
-                androidx.localbroadcastmanager.content.LocalBroadcastManager
-                    .getInstance(this).sendBroadcast(statusIntent)
-
-            } catch (e: Exception) {
-                Log.e("FloatService", "Parse error: ${e.message}")
-            }
-
-            // 日志
-            val logger = LogManager.getInstance(this)
-            logger.save(data)
-        }
-        udpReceiver?.start()
-    }
-
-    fun stopMonitoring() {
-        udpReceiver?.stop()
-        udpReceiver = null
+        
         totalPackets = 0
         currentHz = 0
+        lastRole = 1
+        logger.startNewSession()
+        
+        showFloatWindow()
+        startUdpReceive(port)
+        startStatusTimer()
 
-        val stoppedIntent = Intent(ACTION_STATUS).apply {
-            putExtra("IS_STOPPED", true)
+        mainHandler.postDelayed({
+            sendStatusBroadcast()
+        }, 200)
+        
+        return START_NOT_STICKY
+    }
+
+    private fun startUdpReceive(port: Int) {
+        receiver?.stop()
+        
+        receiver = UdpReceiver(port) { data ->
+            try {
+                totalPackets++
+                packetsInLastSecond++
+
+                logger.save(data)
+                
+                mainHandler.post {
+                    floatView?.updateJsonDynamic(data)
+                    
+                    try {
+                        val obj = org.json.JSONObject(data)
+                        val currentRole = obj.optInt("role", 1)
+                        if (currentRole != lastRole) {
+                            lastRole = currentRole
+                            sendRoleChangeBroadcast(currentRole)
+                        }
+                    } catch (e: Exception) {
+                        // 解析失败忽略
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("FloatService", "网络数据流分发路由异常", e)
+            }
         }
-        androidx.localbroadcastmanager.content.LocalBroadcastManager
-            .getInstance(this).sendBroadcast(stoppedIntent)
+        receiver?.start()
+    }
+
+    private fun sendRoleChangeBroadcast(role: Int) {
+        val intent = Intent("com.example.netfloatmonitor.ROLE_CHANGE").apply {
+            putExtra("ROLE", role)
+        }
+        LocalBroadcastManager.getInstance(this@FloatService).sendBroadcast(intent)
+        Log.d("FloatService", "角色变化广播: role=$role")
+    }
+
+    private fun startStatusTimer() {
+        statusTimer?.cancel()
+        statusTimer = Timer()
+        statusTimer?.scheduleAtFixedRate(object : TimerTask() {
+            override fun run() {
+                currentHz = packetsInLastSecond
+                packetsInLastSecond = 0
+                sendStatusBroadcast()
+            }
+        }, 1000, 1000)
+    }
+
+    private fun sendStatusBroadcast() {
+        val intent = Intent("com.example.netfloatmonitor.STATUS_UPDATE").apply {
+            putExtra("TOTAL_PACKETS", totalPackets)
+            putExtra("HZ", currentHz)
+        }
+        LocalBroadcastManager.getInstance(this@FloatService).sendBroadcast(intent)
+    }
+
+    private fun showFloatWindow() {
+        if (floatView != null) return
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        val params = WindowManager.LayoutParams()
+        
+        params.width = WindowManager.LayoutParams.WRAP_CONTENT
+        params.height = WindowManager.LayoutParams.WRAP_CONTENT
+        params.type = if (Build.VERSION.SDK_INT >= 26) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+        params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        params.format = PixelFormat.TRANSLUCENT
+        params.x = 50
+        params.y = 200
+        
+        floatView = FloatView(this, wm, params)
+        wm.addView(floatView, params)
     }
 
     override fun onDestroy() {
-        udpReceiver?.stop()
-        udpReceiver = null
+        super.onDestroy()
+        statusTimer?.cancel()
+        statusTimer = null
+        
+        logger.stopSession()
+        
+        val intent = Intent("com.example.netfloatmonitor.STATUS_UPDATE").apply {
+            putExtra("IS_STOPPED", true)
+        }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+
+        receiver?.stop()
+        receiver = null
+        
         if (floatView != null) {
-            wm?.removeView(floatView)
+            try {
+                val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+                wm.removeView(floatView)
+            } catch (e: Exception) {
+                Log.e("FloatService", "移除悬浮窗异常: ${e.message}")
+            }
             floatView = null
         }
-        super.onDestroy()
+        mainHandler.removeCallbacksAndMessages(null)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            val channel = NotificationChannel(
+                "net_monitor", 
+                "NetFloat Monitor", 
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun createNotification(): Notification {
+        return NotificationCompat.Builder(this, "net_monitor")
+            .setContentTitle("NetFloat Monitor")
+            .setContentText("UDP监听运行中")
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .build()
+        }
 }
