@@ -52,34 +52,28 @@ class VoicePromptPlayer(private val context: Context) {
             val t = i.toFloat() / SAMPLE_RATE.toFloat()
             var sample = 0f
 
-            // 使用 Double 计算后转 Float，确保精度
             val freqMod = (sin(2.0 * PI * modFreq.toDouble() * t.toDouble()) * modDepth.toDouble()).toFloat()
             val currentFreq = baseFreq + freqMod
-            
-            // 基频
-            sample += 0.5f * sin(2.0f * PI.toFloat() * currentFreq * t)
+            sample += 0.5f * (sin(2.0 * PI * currentFreq.toDouble() * t.toDouble())).toFloat()
 
-            // 共振峰
             for (j in formants.indices) {
                 val amp = formantAmps[j]
                 val formantFreq = formants[j]
-                val formantMod = sin(2.0f * PI.toFloat() * modFreq * t * 0.5f) * 10f
-                sample += amp * sin(2.0f * PI.toFloat() * (formantFreq + formantMod) * t)
+                val formantMod = (sin(2.0 * PI * modFreq.toDouble() * t.toDouble() * 0.5) * 10.0).toFloat()
+                sample += amp * (sin(2.0 * PI * (formantFreq + formantMod).toDouble() * t.toDouble())).toFloat()
             }
 
-            // 谐波
             for (h in 2..4) {
-                sample += 0.08f / h * sin(2.0f * PI.toFloat() * currentFreq * h * t)
+                sample += 0.08f / h * (sin(2.0 * PI * currentFreq.toDouble() * h * t.toDouble())).toFloat()
             }
 
-            // 汉宁窗包络
             val envelope = when {
                 t < FADE_DURATION -> {
-                    0.5f * (1.0f - cos(PI.toFloat() * t / FADE_DURATION))
+                    (0.5f * (1.0f - cos(PI.toFloat() * t / FADE_DURATION)))
                 }
                 t > DURATION_SECONDS - FADE_DURATION -> {
                     val fadeT = (t - (DURATION_SECONDS - FADE_DURATION)) / FADE_DURATION
-                    0.5f * (1.0f + cos(PI.toFloat() * fadeT))
+                    (0.5f * (1.0f + cos(PI.toFloat() * fadeT)))
                 }
                 else -> 1.0f
             }
@@ -95,7 +89,7 @@ class VoicePromptPlayer(private val context: Context) {
             pcmBytes[i * 2 + 1] = (clampedSample shr 8 and 0xFF).toByte()
         }
 
-        Log.d(TAG, "提示音合成完成: ${if (isPilot) "飞行员" else "观察者"}模式, ${pcmBytes.size} bytes")
+        Log.d(TAG, "提示音合成完成: ${if (isPilot) "飞行员" else "观察者"}模式")
         return pcmBytes
     }
 
