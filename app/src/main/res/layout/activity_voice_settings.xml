@@ -26,7 +26,7 @@
                 android:background="@android:color/transparent"
                 android:src="@android:drawable/ic_menu_revert"
                 android:contentDescription="返回"
-                android:onClick="onBackPressed" />
+                android:onClick="finish" />
 
             <TextView
                 android:layout_width="0dp"
@@ -38,13 +38,12 @@
                 android:textStyle="bold"
                 android:gravity="center" />
 
-            <!-- 占位，保持对称 -->
             <View
                 android:layout_width="40dp"
                 android:layout_height="40dp" />
         </LinearLayout>
 
-        <!-- 组播设置卡片 -->
+        <!-- 组播设置 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -62,56 +61,44 @@
                 android:textStyle="bold"
                 android:textColor="#333333" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:orientation="vertical">
+                android:text="组播地址"
+                android:textSize="14sp"
+                android:textColor="#666666" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="组播地址"
-                    android:textSize="14sp"
-                    android:textColor="#666666" />
-
-                <EditText
-                    android:id="@+id/etMulticastIp"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="224.0.0.1"
-                    android:inputType="text"
-                    android:background="@android:drawable/editbox_background"
-                    android:padding="12dp" />
-            </LinearLayout>
-
-            <LinearLayout
+            <EditText
+                android:id="@+id/etMulticastIp"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="224.0.0.1"
+                android:inputType="text"
+                android:background="@android:drawable/editbox_background"
+                android:padding="12dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:orientation="vertical">
+                android:text="组播端口"
+                android:textSize="14sp"
+                android:textColor="#666666" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="组播端口"
-                    android:textSize="14sp"
-                    android:textColor="#666666" />
-
-                <EditText
-                    android:id="@+id/etMulticastPort"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="50000"
-                    android:inputType="number"
-                    android:background="@android:drawable/editbox_background"
-                    android:padding="12dp" />
-            </LinearLayout>
+            <EditText
+                android:id="@+id/etMulticastPort"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="50000"
+                android:inputType="number"
+                android:background="@android:drawable/editbox_background"
+                android:padding="12dp" />
         </LinearLayout>
 
-        <!-- 音频参数设置卡片 -->
+        <!-- 音频参数 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -129,79 +116,61 @@
                 android:textStyle="bold"
                 android:textColor="#333333" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:orientation="vertical">
+                android:text="编解码格式"
+                android:textSize="14sp"
+                android:textColor="#666666" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="编解码格式"
-                    android:textSize="14sp"
-                    android:textColor="#666666" />
-
-                <AutoCompleteTextView
-                    android:id="@+id/actvCodec"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="PCM"
-                    android:background="@android:drawable/editbox_background"
-                    android:padding="12dp"
-                    android:inputType="none" />
-            </LinearLayout>
-
-            <LinearLayout
+            <AutoCompleteTextView
+                android:id="@+id/actvCodec"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:orientation="vertical">
+                android:layout_marginTop="4dp"
+                android:text="PCM"
+                android:background="@android:drawable/editbox_background"
+                android:padding="12dp"
+                android:inputType="none" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="采样率"
-                    android:textSize="14sp"
-                    android:textColor="#666666" />
-
-                <AutoCompleteTextView
-                    android:id="@+id/actvSampleRate"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="8kHz"
-                    android:background="@android:drawable/editbox_background"
-                    android:padding="12dp"
-                    android:inputType="none" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:orientation="vertical">
+                android:text="采样率"
+                android:textSize="14sp"
+                android:textColor="#666666" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="包大小"
-                    android:textSize="14sp"
-                    android:textColor="#666666" />
+            <AutoCompleteTextView
+                android:id="@+id/actvSampleRate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="8kHz"
+                android:background="@android:drawable/editbox_background"
+                android:padding="12dp"
+                android:inputType="none" />
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="60ms"
-                    android:background="@android:drawable/editbox_background"
-                    android:padding="12dp"
-                    android:textColor="#999999" />
-            </LinearLayout>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="包大小"
+                android:textSize="14sp"
+                android:textColor="#666666" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="60ms"
+                android:background="@android:drawable/editbox_background"
+                android:padding="12dp"
+                android:textColor="#999999" />
         </LinearLayout>
 
-        <!-- 提示音开关卡片 -->
+        <!-- 提示音开关 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -233,7 +202,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 状态显示卡片 -->
+        <!-- 状态显示 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -364,7 +333,6 @@
             android:textColor="#FFFFFF"
             android:enabled="false" />
 
-        <!-- 提示信息 -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
