@@ -1,22 +1,23 @@
 package com.example.netfloatmonitor
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.Button
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.google.android.material.card.MaterialCardView
-import com.google.android.material.switchmaterial.SwitchMaterial
-import com.google.android.material.textfield.TextInputLayout
 
 class VoiceSettingsActivity : AppCompatActivity() {
 
@@ -24,7 +25,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
     private lateinit var etMulticastPort: AutoCompleteTextView
     private lateinit var actvCodec: AutoCompleteTextView
     private lateinit var actvSampleRate: AutoCompleteTextView
-    private lateinit var switchPrompt: SwitchMaterial
+    private lateinit var switchPrompt: Switch
     private lateinit var btnVoiceStart: Button
     private lateinit var btnVoiceStop: Button
     private lateinit var btnPtt: Button
@@ -36,6 +37,9 @@ class VoiceSettingsActivity : AppCompatActivity() {
     private var currentRole = 1
     private var isMuted = false
     private var isPilot = false
+    
+    // 权限请求码
+    private val REQUEST_RECORD_AUDIO = 1001
 
     private val voiceStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -83,6 +87,9 @@ class VoiceSettingsActivity : AppCompatActivity() {
         registerReceivers()
         setupListeners()
         updateUI()
+        
+        // 检查录音权限
+        checkRecordPermission()
     }
 
     private fun initViews() {
@@ -119,23 +126,36 @@ class VoiceSettingsActivity : AppCompatActivity() {
     }
 
     private fun loadConfig() {
-        val sp = getSharedPreferences("voice_config", Context.MODE_PRIVATE)
-        etMulticastIp.setText(sp.getString("multicast_ip", "224.0.0.1"))
-        etMulticastPort.setText(sp.getString("multicast_port", "50000"))
-        actvCodec.setText(sp.getString("codec", getString(R.string.voice_codec_pcm)))
-        actvSampleRate.setText(sp.getString("sample_rate", getString(R.string.voice_sample_8k)))
-        switchPrompt.isChecked = sp.getBoolean("prompt_enabled", true)
+        try {
+            val sp = getSharedPreferences("voice_config", Context.MODE_PRIVATE)
+            etMulticastIp.setText(sp.getString("multicast_ip", "224.0.0.1"))
+            etMulticastPort.setText(sp.getString("multicast_port", "50000"))
+            actvCodec.setText(sp.getString("codec", getString(R.string.voice_codec_pcm)))
+            actvSampleRate.setText(sp.getString("sample_rate", getString(R.string.voice_sample_8k)))
+            switchPrompt.isChecked = sp.getBoolean("prompt_enabled", true)
+        } catch (e: Exception) {
+            // SharedPreferences 异常时使用默认值
+            etMulticastIp.setText("224.0.0.1")
+            etMulticastPort.setText("50000")
+            actvCodec.setText(getString(R.string.voice_codec_pcm))
+            actvSampleRate.setText(getString(R.string.voice_sample_8k))
+            switchPrompt.isChecked = true
+        }
     }
 
     private fun saveConfig() {
-        val sp = getSharedPreferences("voice_config", Context.MODE_PRIVATE)
-        sp.edit().apply {
-            putString("multicast_ip", etMulticastIp.text.toString())
-            putString("multicast_port", etMulticastPort.text.toString())
-            putString("codec", actvCodec.text.toString())
-            putString("sample_rate", actvSampleRate.text.toString())
-            putBoolean("prompt_enabled", switchPrompt.isChecked)
-            apply()
+        try {
+            val sp = getSharedPreferences("voice_config", Context.MODE_PRIVATE)
+            sp.edit().apply {
+                putString("multicast_ip", etMulticastIp.text.toString())
+                putString("multicast_port", etMulticastPort.text.toString())
+                putString("codec", actvCodec.text.toString())
+                putString("sample_rate", actvSampleRate.text.toString())
+                putBoolean("prompt_enabled", switchPrompt.isChecked)
+                apply()
+            }
+        } catch (e: Exception) {
+            // 忽略保存失败
         }
     }
 
@@ -151,6 +171,11 @@ class VoiceSettingsActivity : AppCompatActivity() {
 
     private fun setupListeners() {
         btnVoiceStart.setOnClickListener {
+            // 检查录音权限
+            if (!checkRecordPermission()) {
+                requestRecordPermission()
+                return@setOnClickListener
+            }
             saveConfig()
             startVoiceService()
         }
@@ -189,6 +214,42 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
     }
 
+    private fun checkRecordPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    private fun requestRecordPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                REQUEST_RECORD_AUDIO
+            )
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "✅ 录音权限已获取", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "⚠️ 需要录音权限才能讲话", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private fun startVoiceService() {
         val ip = etMulticastIp.text.toString().trim()
         val portStr = etMulticastPort.text.toString().trim()
@@ -216,25 +277,32 @@ class VoiceSettingsActivity : AppCompatActivity() {
             putExtra("PROMPT_ENABLED", promptEnabled)
         }
 
-        if (Build.VERSION.SDK_INT >= 26) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
+        try {
+            if (Build.VERSION.SDK_INT >= 26) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            isVoiceRunning = true
+            updateUI()
+            Toast.makeText(this, "🎧 语音服务启动中...", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "启动语音服务失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-
-        isVoiceRunning = true
-        updateUI()
-        Toast.makeText(this, "🎧 语音服务启动中...", Toast.LENGTH_SHORT).show()
     }
 
     private fun stopVoiceService() {
-        val intent = Intent(this, VoiceService::class.java).apply {
-            putExtra("ACTION", "STOP")
+        try {
+            val intent = Intent(this, VoiceService::class.java).apply {
+                putExtra("ACTION", "STOP")
+            }
+            startService(intent)
+            isVoiceRunning = false
+            updateUI()
+            Toast.makeText(this, "⏹ 语音服务已停止", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "停止语音服务失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-        startService(intent)
-        isVoiceRunning = false
-        updateUI()
-        Toast.makeText(this, "⏹ 语音服务已停止", Toast.LENGTH_SHORT).show()
     }
 
     private fun broadcastPttState(muted: Boolean) {
