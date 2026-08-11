@@ -12,8 +12,11 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.Toolbar
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.switchmaterial.SwitchMaterial
+import com.google.android.material.textfield.TextInputLayout
 
 class VoiceSettingsActivity : AppCompatActivity() {
 
@@ -183,15 +186,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             } else {
                 false
             }
-        }
-
-        btnPtt.setOnTouchListener { _, event ->
-            when (event.action) {
-                android.view.MotionEvent.ACTION_UP -> {
-                    // 长按松开恢复
-                }
-            }
-            false
         }
     }
 
