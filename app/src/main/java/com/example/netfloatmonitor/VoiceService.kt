@@ -63,8 +63,8 @@ class VoiceService : Service() {
     private var audioCodec: AudioCodec = PcmCodec()
     private var packetSeq: Int = 0
     
-    private lateinit var promptPlayer: VoicePromptPlayer
-    private lateinit var audioDeviceManager: AudioDeviceManager
+    private var promptPlayer: VoicePromptPlayer? = null
+    private var audioDeviceManager: AudioDeviceManager? = null
     
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentRoleFromJson: Int = 1
@@ -101,7 +101,7 @@ class VoiceService : Service() {
         createNotificationChannel()
         promptPlayer = VoicePromptPlayer(this)
         audioDeviceManager = AudioDeviceManager(this)
-        audioDeviceManager.setDeviceChangeListener { device ->
+        audioDeviceManager?.setDeviceChangeListener { device ->
             Log.d(TAG, "音频设备切换: $device")
             broadcastDeviceChange(device)
         }
@@ -177,7 +177,7 @@ class VoiceService : Service() {
             jitterBuffer.clear()
 
             broadcastStatus()
-            audioDeviceManager.checkAndSwitchToBestDevice()
+            audioDeviceManager?.checkAndSwitchToBestDevice()
             
             Log.d(TAG, "语音服务已启动（初始观察者模式）")
 
@@ -220,7 +220,7 @@ class VoiceService : Service() {
 
         audioQueue.clear()
         jitterBuffer.clear()
-        promptPlayer.stop()
+        promptPlayer?.stop()
 
         broadcastStatus()
         Log.d(TAG, "语音服务已停止")
@@ -238,7 +238,7 @@ class VoiceService : Service() {
                 
                 if (promptEnabled) {
                     mainHandler.post {
-                        promptPlayer.playPilotPrompt()
+                        promptPlayer?.playPilotPrompt()
                     }
                 }
                 
@@ -251,7 +251,7 @@ class VoiceService : Service() {
                 
                 if (promptEnabled) {
                     mainHandler.post {
-                        promptPlayer.playObserverPrompt()
+                        promptPlayer?.playObserverPrompt()
                     }
                 }
                 
@@ -536,7 +536,7 @@ class VoiceService : Service() {
     private fun updateNotification() {
         val roleText = if (isPilotMode.get()) "飞行员 🎤" else "观察者 🎧"
         val mutedText = if (isMuted.get()) " 🔇静音" else ""
-        val deviceText = " 📱${audioDeviceManager.getCurrentOutputDevice()}"
+        val deviceText = " 📱${audioDeviceManager?.getCurrentOutputDevice() ?: "扬声器"}"
         
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("语音对讲")
@@ -569,7 +569,7 @@ class VoiceService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopVoice()
-        audioDeviceManager.release()
+        audioDeviceManager?.release()
         try {
             LocalBroadcastManager.getInstance(this).unregisterReceiver(roleReceiver)
             LocalBroadcastManager.getInstance(this).unregisterReceiver(pttReceiver)
