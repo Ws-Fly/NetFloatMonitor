@@ -7,7 +7,6 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.util.Log
 import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.sin
 
 class VoicePromptPlayer(private val context: Context) {
@@ -15,8 +14,7 @@ class VoicePromptPlayer(private val context: Context) {
     companion object {
         private const val TAG = "VoicePromptPlayer"
         private const val SAMPLE_RATE = 16000
-        private const val DURATION_SECONDS = 1.2f
-        private const val FADE_DURATION = 0.1f
+        private const val DURATION_SECONDS = 1.0f
     }
 
     private var audioTrack: AudioTrack? = null
@@ -24,61 +22,38 @@ class VoicePromptPlayer(private val context: Context) {
 
     fun playPilotPrompt() {
         if (isPlaying) return
-        val pcmData = generatePromptTone(baseFreq = 180f, isPilot = true)
+        val pcmData = generatePromptTone(180f)
         playPrompt(pcmData)
     }
 
     fun playObserverPrompt() {
         if (isPlaying) return
-        val pcmData = generatePromptTone(baseFreq = 220f, isPilot = false)
+        val pcmData = generatePromptTone(220f)
         playPrompt(pcmData)
     }
 
-    private fun generatePromptTone(baseFreq: Float, isPilot: Boolean): ByteArray {
+    private fun generatePromptTone(baseFreq: Float): ByteArray {
         val numSamples = (SAMPLE_RATE * DURATION_SECONDS).toInt()
         val audioData = FloatArray(numSamples)
-
-        val formants = if (isPilot) {
-            floatArrayOf(450f, 1200f, 2200f, 3200f)
-        } else {
-            floatArrayOf(550f, 1500f, 2600f, 3800f)
-        }
-        val formantAmps = floatArrayOf(1.0f, 0.6f, 0.35f, 0.2f)
-
-        val modFreq = if (isPilot) 4.5f else 5.5f
-        val modDepth = 8f
 
         for (i in 0 until numSamples) {
             val t = i.toFloat() / SAMPLE_RATE.toFloat()
             var sample = 0f
-
-            val freqMod = (sin(2.0 * PI * modFreq.toDouble() * t.toDouble()) * modDepth.toDouble()).toFloat()
-            val currentFreq = baseFreq + freqMod
-            sample += 0.5f * (sin(2.0 * PI * currentFreq.toDouble() * t.toDouble())).toFloat()
-
-            for (j in formants.indices) {
-                val amp = formantAmps[j]
-                val formantFreq = formants[j]
-                val formantMod = (sin(2.0 * PI * modFreq.toDouble() * t.toDouble() * 0.5) * 10.0).toFloat()
-                sample += amp * (sin(2.0 * PI * (formantFreq + formantMod).toDouble() * t.toDouble())).toFloat()
+            
+            // 基频 + 谐波
+            for (h in 1..5) {
+                val amp = 1.0f / h
+                sample += amp * sin(2.0f * PI.toFloat() * baseFreq * h * t)
             }
-
-            for (h in 2..4) {
-                sample += 0.08f / h * (sin(2.0 * PI * currentFreq.toDouble() * h * t.toDouble())).toFloat()
-            }
-
+            
+            // 包络（淡入淡出）
             val envelope = when {
-                t < FADE_DURATION -> {
-                    (0.5f * (1.0f - cos(PI.toFloat() * t / FADE_DURATION)))
-                }
-                t > DURATION_SECONDS - FADE_DURATION -> {
-                    val fadeT = (t - (DURATION_SECONDS - FADE_DURATION)) / FADE_DURATION
-                    (0.5f * (1.0f + cos(PI.toFloat() * fadeT)))
-                }
+                t < 0.1f -> t / 0.1f
+                t > 0.9f -> (1.0f - (t - 0.9f) / 0.1f)
                 else -> 1.0f
             }
-
-            audioData[i] = sample * 0.35f * envelope
+            
+            audioData[i] = sample * 0.3f * envelope
         }
 
         val pcmBytes = ByteArray(numSamples * 2)
@@ -89,7 +64,7 @@ class VoicePromptPlayer(private val context: Context) {
             pcmBytes[i * 2 + 1] = (clampedSample shr 8 and 0xFF).toByte()
         }
 
-        Log.d(TAG, "提示音合成完成: ${if (isPilot) "飞行员" else "观察者"}模式")
+        Log.d(TAG, "提示音合成完成: ${if (baseFreq == 180f) "飞行员" else "观察者"}模式")
         return pcmBytes
     }
 
@@ -135,6 +110,7 @@ class VoicePromptPlayer(private val context: Context) {
             audioTrack?.play()
             audioTrack?.write(pcmData, 0, pcmData.size)
 
+            // 等待播放完成
             val totalFrames = pcmData.size / 2
             var playedFrames = 0
             val startTime = System.currentTimeMillis()
@@ -149,16 +125,8 @@ class VoicePromptPlayer(private val context: Context) {
             audioTrack?.release()
             audioTrack = null
 
-            val currentVolume = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-            val targetRestoreVolume = originalVolume
-            
-            if (currentVolume < targetRestoreVolume) {
-                for (vol in (currentVolume + 1)..targetRestoreVolume) {
-                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, vol, 0)
-                    Thread.sleep(20)
-                }
-            }
-            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetRestoreVolume, 0)
+            // 恢复音量
+            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
 
             Log.d(TAG, "提示音播放完成")
 
