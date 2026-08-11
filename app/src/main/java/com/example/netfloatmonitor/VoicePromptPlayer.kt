@@ -49,31 +49,31 @@ class VoicePromptPlayer(private val context: Context) {
         val modDepth = 8f
 
         for (i in 0 until numSamples) {
-            val t = i / SAMPLE_RATE.toFloat()
+            val t = i.toFloat() / SAMPLE_RATE.toFloat()
             var sample = 0f
 
-            val freqMod = sin(2 * PI * modFreq * t).toFloat() * modDepth
+            val freqMod = (sin(2.0 * PI * modFreq.toDouble() * t.toDouble()) * modDepth.toDouble()).toFloat()
             val currentFreq = baseFreq + freqMod
-            sample += 0.5f * sin(2 * PI * currentFreq * t)
+            sample += 0.5f * (sin(2.0 * PI * currentFreq.toDouble() * t.toDouble())).toFloat()
 
             for (j in formants.indices) {
                 val amp = formantAmps[j]
                 val formantFreq = formants[j]
-                val formantMod = sin(2 * PI * modFreq * t * 0.5f).toFloat() * 10f
-                sample += amp * sin(2 * PI * (formantFreq + formantMod) * t)
+                val formantMod = (sin(2.0 * PI * modFreq.toDouble() * t.toDouble() * 0.5) * 10.0).toFloat()
+                sample += amp * (sin(2.0 * PI * (formantFreq + formantMod).toDouble() * t.toDouble())).toFloat()
             }
 
             for (h in 2..4) {
-                sample += 0.08f / h * sin(2 * PI * currentFreq * h * t)
+                sample += 0.08f / h * (sin(2.0 * PI * currentFreq.toDouble() * h * t.toDouble())).toFloat()
             }
 
             val envelope = when {
                 t < FADE_DURATION -> {
-                    0.5f * (1 - cos(PI * t / FADE_DURATION)).toFloat()
+                    (0.5f * (1.0f - cos(PI.toFloat() * t / FADE_DURATION)))
                 }
                 t > DURATION_SECONDS - FADE_DURATION -> {
                     val fadeT = (t - (DURATION_SECONDS - FADE_DURATION)) / FADE_DURATION
-                    0.5f * (1 + cos(PI * fadeT)).toFloat()
+                    (0.5f * (1.0f + cos(PI.toFloat() * fadeT)))
                 }
                 else -> 1.0f
             }
@@ -122,7 +122,7 @@ class VoicePromptPlayer(private val context: Context) {
                 AudioFormat.ENCODING_PCM_16BIT
             )
             
-            val bufferSize = maxOf(minBufferSize, pcmData.size * 2)
+            val bufferSize = if (minBufferSize > 0) maxOf(minBufferSize, pcmData.size * 2) else pcmData.size * 2
 
             audioTrack = AudioTrack(
                 audioAttributes,
