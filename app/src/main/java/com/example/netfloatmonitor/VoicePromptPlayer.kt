@@ -14,7 +14,7 @@ class VoicePromptPlayer(private val context: Context) {
     companion object {
         private const val TAG = "VoicePromptPlayer"
         private const val SAMPLE_RATE = 16000
-        private const val DURATION_SECONDS = 1.0f
+        private const val DURATION_SECONDS = 0.8f
     }
 
     private var audioTrack: AudioTrack? = null
@@ -40,7 +40,7 @@ class VoicePromptPlayer(private val context: Context) {
             val t = i.toFloat() / SAMPLE_RATE.toFloat()
             var sample = 0f
             
-            // 基频 + 谐波
+            // 基频 + 谐波（更清晰的提示音）
             for (h in 1..5) {
                 val amp = 1.0f / h
                 sample += amp * sin(2.0f * PI.toFloat() * baseFreq * h * t)
@@ -48,12 +48,12 @@ class VoicePromptPlayer(private val context: Context) {
             
             // 包络（淡入淡出）
             val envelope = when {
-                t < 0.1f -> t / 0.1f
-                t > 0.9f -> (1.0f - (t - 0.9f) / 0.1f)
+                t < 0.08f -> t / 0.08f
+                t > 0.72f -> (1.0f - (t - 0.72f) / 0.08f)
                 else -> 1.0f
             }
             
-            audioData[i] = sample * 0.3f * envelope
+            audioData[i] = sample * 0.4f * envelope
         }
 
         val pcmBytes = ByteArray(numSamples * 2)
@@ -73,13 +73,16 @@ class VoicePromptPlayer(private val context: Context) {
         isPlaying = true
 
         try {
+            // ===== 关键修复：使用 STREAM_MUSIC 确保媒体通道播放 =====
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             val originalVolume = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
             val maxVolume = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
             
-            val targetVolume = (maxVolume * 0.3f).toInt()
+            // 保存当前音量，播放时用 40% 音量
+            val targetVolume = (maxVolume * 0.4f).toInt().coerceAtLeast(1)
             audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0)
 
+            // ===== 修复：明确指定流类型为 STREAM_MUSIC =====
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
