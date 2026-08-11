@@ -11,7 +11,6 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- 新增：Android 13+ 通知权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" android:minSdkVersion="31" />
@@ -41,9 +40,10 @@
             android:foregroundServiceType="specialUse"
             android:exported="false" />
 
+        <!-- 修复：使用 dataSync 替代 mediaProjection，避免权限问题 -->
         <service
             android:name=".VoiceService"
-            android:foregroundServiceType="mediaProjection"
+            android:foregroundServiceType="dataSync"
             android:exported="false" />
 
     </application>
