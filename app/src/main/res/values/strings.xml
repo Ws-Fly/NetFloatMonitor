@@ -1,9 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <resources>
-
-    <string name="app_name">
-        NetFloatMonitor
-    </string>
-
+    <string name="app_name">NetFloatMonitor</string>
+    
+    <string name="voice_settings_title">语音对讲设置</string>
+    <string name="voice_multicast_ip">组播地址</string>
+    <string name="voice_multicast_port">组播端口</string>
+    <string name="voice_codec">编解码格式</string>
+    <string name="voice_sample_rate">采样率</string>
+    <string name="voice_packet_size">包大小</string>
+    <string name="voice_packet_size_60ms">60ms</string>
+    <string name="voice_enable_prompt">启用提示音</string>
+    <string name="voice_start">启动语音</string>
+    <string name="voice_stop">停止语音</string>
+    <string name="voice_status">当前状态</string>
+    <string name="voice_role">当前角色</string>
+    <string name="voice_connected">已连接</string>
+    <string name="voice_disconnected">未连接</string>
+    <string name="voice_pilot">飞行员 🎤</string>
+    <string name="voice_observer">观察者 🎧</string>
+    <string name="voice_ptt">静音/取消静音</string>
+    <string name="voice_ptt_disabled">仅收听模式</string>
+    <string name="voice_hint_role_auto">role=0 时自动开启麦克风讲话</string>
+    <string name="voice_hint_role_observer">role=1 时仅收听</string>
+    <string name="voice_hint_ptt_override">手动按钮可临时覆盖上述行为</string>
+    <string name="voice_codec_pcm">PCM</string>
+    <string name="voice_codec_opus">Opus</string>
+    <string name="voice_codec_g711">G.711</string>
+    <string name="voice_sample_8k">8kHz</string>
+    <string name="voice_sample_16k">16kHz</string>
 </resources>
