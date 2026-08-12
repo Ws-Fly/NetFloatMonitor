@@ -43,7 +43,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 "com.example.netfloatmonitor.VOICE_STATUS" -> {
                     isVoiceRunning = intent.getBooleanExtra("RUNNING", false)
                     currentRole = intent.getIntExtra("ROLE", 1)
-                    switchVoice.isChecked = isVoiceRunning
+                    try { switchVoice.isChecked = isVoiceRunning } catch (e: Exception) {}
                     updateUI()
                 }
                 "com.example.netfloatmonitor.VOICE_ROLE_CHANGE" -> {
@@ -379,16 +379,20 @@ class VoiceSettingsActivity : AppCompatActivity() {
     }
 
     private fun updateUI() {
-        tvVoiceStatus.text = if (isVoiceRunning) {
-            "状态: ● 已连接"
-        } else {
-            "状态: ○ 未连接"
-        }
-        tvVoiceStatus.setTextColor(if (isVoiceRunning) Color.parseColor("#4CAF50") else Color.parseColor("#E74C3C"))
+        try {
+            tvVoiceStatus.text = if (isVoiceRunning) {
+                "状态: ● 已连接"
+            } else {
+                "状态: ○ 未连接"
+            }
+            tvVoiceStatus.setTextColor(if (isVoiceRunning) Color.parseColor("#4CAF50") else Color.parseColor("#E74C3C"))
 
-        val roleText = if (currentRole == 0) "飞行员 🎤" else "观察者 🎧"
-        tvVoiceRole.text = "角色: $roleText"
-        tvVoiceRole.setTextColor(if (currentRole == 0) Color.parseColor("#2ECC71") else Color.parseColor("#3498DB"))
+            val roleText = if (currentRole == 0) "飞行员 🎤" else "观察者 🎧"
+            tvVoiceRole.text = "角色: $roleText"
+            tvVoiceRole.setTextColor(if (currentRole == 0) Color.parseColor("#2ECC71") else Color.parseColor("#3498DB"))
+        } catch (e: Exception) {
+            // 忽略
+        }
     }
 
     override fun onDestroy() {
