@@ -43,7 +43,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 "com.example.netfloatmonitor.VOICE_STATUS" -> {
                     isVoiceRunning = intent.getBooleanExtra("RUNNING", false)
                     currentRole = intent.getIntExtra("ROLE", 1)
-                    // ===== 修复：同步开关状态 =====
                     switchVoice.isChecked = isVoiceRunning
                     updateUI()
                 }
@@ -64,168 +63,138 @@ class VoiceSettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val scrollView = ScrollView(this).apply {
-            setBackgroundColor(Color.parseColor("#1A1A2E"))
+        try {
+            // ===== 使用最简单的布局，先保证不闪退 =====
+            val rootLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(32, 32, 32, 32)
+                setBackgroundColor(Color.BLACK)
+            }
+
+            // 标题
+            val titleView = TextView(this).apply {
+                text = "🎤 语音对讲"
+                textSize = 22f
+                setTextColor(Color.WHITE)
+                setPadding(0, 0, 0, 24)
+            }
+            rootLayout.addView(titleView)
+
+            // 组播地址
+            val ipLabel = TextView(this).apply {
+                text = "组播地址"
+                textSize = 15f
+                setTextColor(Color.parseColor("#AAAAAA"))
+            }
+            rootLayout.addView(ipLabel)
+
+            etMulticastIp = EditText(this).apply {
+                setText("224.12.34.56")
+                setPadding(16, 16, 16, 16)
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.parseColor("#666666"))
+                setBackgroundResource(android.R.drawable.editbox_background)
+            }
+            rootLayout.addView(etMulticastIp)
+
+            // 组播端口
+            val portLabel = TextView(this).apply {
+                text = "组播端口"
+                textSize = 15f
+                setTextColor(Color.parseColor("#AAAAAA"))
+                setPadding(0, 20, 0, 0)
+            }
+            rootLayout.addView(portLabel)
+
+            etMulticastPort = EditText(this).apply {
+                setText("18000")
+                setPadding(16, 16, 16, 16)
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.parseColor("#666666"))
+                setBackgroundResource(android.R.drawable.editbox_background)
+            }
+            rootLayout.addView(etMulticastPort)
+
+            // 对讲功能开关
+            val switchLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 24, 0, 0)
+            }
+
+            val switchLabel = TextView(this).apply {
+                text = "🔊 对讲功能"
+                textSize = 17f
+                setTextColor(Color.WHITE)
+                val params = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                layoutParams = params
+            }
+            switchLayout.addView(switchLabel)
+
+            switchVoice = Switch(this).apply {
+                isChecked = false
+            }
+            switchLayout.addView(switchVoice)
+            rootLayout.addView(switchLayout)
+
+            // 状态显示
+            val statusLabel = TextView(this).apply {
+                text = "📊 实时状态"
+                textSize = 16f
+                setTextColor(Color.parseColor("#DDDDDD"))
+                setPadding(0, 24, 0, 12)
+            }
+            rootLayout.addView(statusLabel)
+
+            tvVoiceStatus = TextView(this).apply {
+                text = "状态: ○ 未连接"
+                textSize = 15f
+                setTextColor(Color.parseColor("#E74C3C"))
+            }
+            rootLayout.addView(tvVoiceStatus)
+
+            tvVoiceRole = TextView(this).apply {
+                text = "角色: 观察者 🎧"
+                textSize = 15f
+                setTextColor(Color.parseColor("#3498DB"))
+                setPadding(0, 6, 0, 0)
+            }
+            rootLayout.addView(tvVoiceRole)
+
+            // 返回按钮
+            val backBtn = Button(this).apply {
+                text = "← 返回"
+                textSize = 15f
+                setTextColor(Color.WHITE)
+                setPadding(0, 24, 0, 0)
+                setBackgroundColor(Color.TRANSPARENT)
+            }
+            backBtn.setOnClickListener { finish() }
+            rootLayout.addView(backBtn)
+
+            // ===== 关键修复：使用 ScrollView 包裹 =====
+            val scrollView = ScrollView(this).apply {
+                setBackgroundColor(Color.parseColor("#1A1A2E"))
+                addView(rootLayout)
+            }
+            setContentView(scrollView)
+
+            loadConfig()
+            registerReceivers()
+            setupListeners()
+            updateUI()
+            checkRecordPermission()
+
+        } catch (e: Exception) {
+            // ===== 捕获异常并显示 =====
+            val errorView = TextView(this).apply {
+                text = "❌ 初始化失败:\n${e.message}\n\n${e.stackTrace.joinToString("\n")}"
+                textSize = 14f
+                setTextColor(Color.RED)
+                setPadding(32, 32, 32, 32)
+            }
+            setContentView(errorView)
+            e.printStackTrace()
         }
-
-        val rootLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
-        }
-
-        // ===== 标题 =====
-        val titleView = TextView(this).apply {
-            text = "🎤 语音对讲"
-            textSize = 22f
-            setTextColor(Color.WHITE)
-            setPadding(0, 0, 0, 24)
-        }
-        rootLayout.addView(titleView)
-
-        // ===== 组播地址 =====
-        val ipLabel = TextView(this).apply {
-            text = "组播地址"
-            textSize = 15f
-            setTextColor(Color.parseColor("#AAAAAA"))
-        }
-        rootLayout.addView(ipLabel)
-
-        etMulticastIp = EditText(this).apply {
-            setText("224.12.34.56")
-            setPadding(16, 16, 16, 16)
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.parseColor("#666666"))
-            setBackgroundResource(android.R.drawable.editbox_background)
-        }
-        rootLayout.addView(etMulticastIp)
-
-        // ===== 组播端口 =====
-        val portLabel = TextView(this).apply {
-            text = "组播端口"
-            textSize = 15f
-            setTextColor(Color.parseColor("#AAAAAA"))
-            setPadding(0, 20, 0, 0)
-        }
-        rootLayout.addView(portLabel)
-
-        etMulticastPort = EditText(this).apply {
-            setText("18000")
-            setPadding(16, 16, 16, 16)
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.parseColor("#666666"))
-            setBackgroundResource(android.R.drawable.editbox_background)
-        }
-        rootLayout.addView(etMulticastPort)
-
-        // ===== 分隔线 1 =====
-        val divider = View(this)
-        divider.setBackgroundColor(Color.parseColor("#333333"))
-        val dividerParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 1
-        )
-        dividerParams.setMargins(0, 24, 0, 24)
-        divider.layoutParams = dividerParams
-        rootLayout.addView(divider)
-
-        // ===== 对讲功能总开关 =====
-        val switchLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 0)
-        }
-
-        val switchLabel = TextView(this).apply {
-            text = "🔊 对讲功能"
-            textSize = 17f
-            setTextColor(Color.WHITE)
-            val params = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            layoutParams = params
-        }
-        switchLayout.addView(switchLabel)
-
-        switchVoice = Switch(this).apply {
-            isChecked = false
-        }
-        switchLayout.addView(switchVoice)
-        rootLayout.addView(switchLayout)
-
-        val switchHint = TextView(this).apply {
-            text = "开启后可讲话和收听"
-            textSize = 12f
-            setTextColor(Color.parseColor("#888888"))
-            setPadding(0, 4, 0, 0)
-        }
-        rootLayout.addView(switchHint)
-
-        // ===== 分隔线 2 =====
-        val divider2 = View(this)
-        divider2.setBackgroundColor(Color.parseColor("#333333"))
-        val dividerParams2 = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 1
-        )
-        dividerParams2.setMargins(0, 24, 0, 24)
-        divider2.layoutParams = dividerParams2
-        rootLayout.addView(divider2)
-
-        // ===== 状态显示 =====
-        val statusLabel = TextView(this).apply {
-            text = "📊 实时状态"
-            textSize = 16f
-            setTextColor(Color.parseColor("#DDDDDD"))
-            setPadding(0, 0, 0, 12)
-        }
-        rootLayout.addView(statusLabel)
-
-        tvVoiceStatus = TextView(this).apply {
-            text = "状态: ○ 未连接"
-            textSize = 15f
-            setTextColor(Color.parseColor("#E74C3C"))
-        }
-        rootLayout.addView(tvVoiceStatus)
-
-        tvVoiceRole = TextView(this).apply {
-            text = "角色: 观察者 🎧"
-            textSize = 15f
-            setTextColor(Color.parseColor("#3498DB"))
-            setPadding(0, 6, 0, 0)
-        }
-        rootLayout.addView(tvVoiceRole)
-
-        // ===== 提示信息 =====
-        val hint1 = TextView(this).apply {
-            text = "💡 role=0 飞行员模式（可讲话）"
-            textSize = 13f
-            setTextColor(Color.parseColor("#888888"))
-            setPadding(0, 24, 0, 0)
-        }
-        rootLayout.addView(hint1)
-
-        val hint2 = TextView(this).apply {
-            text = "💡 role=1 观察者模式（仅收听）"
-            textSize = 13f
-            setTextColor(Color.parseColor("#888888"))
-            setPadding(0, 4, 0, 0)
-        }
-        rootLayout.addView(hint2)
-
-        // ===== 返回按钮 =====
-        val backBtn = Button(this).apply {
-            text = "← 返回"
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            setPadding(0, 24, 0, 0)
-            setBackgroundColor(Color.TRANSPARENT)
-        }
-        backBtn.setOnClickListener { finish() }
-        rootLayout.addView(backBtn)
-
-        scrollView.addView(rootLayout)
-        setContentView(scrollView)
-
-        loadConfig()
-        registerReceivers()
-        setupListeners()
-        updateUI()
-        checkRecordPermission()
     }
 
     private fun loadConfig() {
@@ -254,11 +223,15 @@ class VoiceSettingsActivity : AppCompatActivity() {
     }
 
     private fun registerReceivers() {
-        val filter = IntentFilter().apply {
-            addAction("com.example.netfloatmonitor.VOICE_STATUS")
-            addAction("com.example.netfloatmonitor.VOICE_ROLE_CHANGE")
+        try {
+            val filter = IntentFilter().apply {
+                addAction("com.example.netfloatmonitor.VOICE_STATUS")
+                addAction("com.example.netfloatmonitor.VOICE_ROLE_CHANGE")
+            }
+            LocalBroadcastManager.getInstance(this).registerReceiver(voiceStatusReceiver, filter)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
-        LocalBroadcastManager.getInstance(this).registerReceiver(voiceStatusReceiver, filter)
     }
 
     private fun setupListeners() {
@@ -347,7 +320,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 startService(intent)
             }
             isVoiceRunning = true
-            // ===== 修复：开关状态由广播同步，不在此处设置 =====
             updateUI()
             Toast.makeText(this, "🎧 语音对讲已开启", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
@@ -363,7 +335,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             }
             startService(intent)
             isVoiceRunning = false
-            // ===== 修复：开关状态由广播同步 =====
             updateUI()
             Toast.makeText(this, "⏹ 语音对讲已关闭", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
