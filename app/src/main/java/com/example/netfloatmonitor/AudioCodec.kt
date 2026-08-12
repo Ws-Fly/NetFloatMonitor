@@ -1,8 +1,6 @@
 package com.example.netfloatmonitor
 
 import android.util.Log
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 interface AudioCodec {
     fun encode(pcmData: ByteArray, sampleRate: Int): ByteArray?
@@ -10,12 +8,14 @@ interface AudioCodec {
     fun getName(): String
 }
 
+// ===== PCM 无损 =====
 class PcmCodec : AudioCodec {
     override fun encode(pcmData: ByteArray, sampleRate: Int): ByteArray? = pcmData
     override fun decode(encodedData: ByteArray, sampleRate: Int): ByteArray? = encodedData
     override fun getName(): String = "PCM"
 }
 
+// ===== G.711 μ-law 压缩（2:1 压缩比） =====
 class G711Codec : AudioCodec {
     
     companion object {
@@ -25,7 +25,6 @@ class G711Codec : AudioCodec {
     override fun encode(pcmData: ByteArray, sampleRate: Int): ByteArray? {
         try {
             if (pcmData.size % 2 != 0) {
-                Log.w(TAG, "PCM数据长度不是偶数")
                 return null
             }
             
@@ -131,227 +130,191 @@ class G711Codec : AudioCodec {
     }
 }
 
-/**
- * Opus 编解码器（使用 Concentus 纯 Java 实现）
- * 支持 8kHz/16kHz 采样率，码率可配置
- */
-class OpusCodec : AudioCodec {
+// ===== ADPCM 压缩（4:1 压缩比，音质优于 G.711） =====
+class AdpcmCodec : AudioCodec {
     
     companion object {
-        private const val TAG = "OpusCodec"
-        private const val OPUS_APPLICATION_VOIP = 2048
-        private const val OPUS_SIGNAL_VOICE = 3001
+        private const val TAG = "AdpcmCodec"
         
-        // 默认码率：24 kbps
-        private var bitrateKbps = 24
-    }
-    
-    // 编码器/解码器实例（延迟初始化）
-    private var encoder: Any? = null
-    private var decoder: Any? = null
-    private var currentSampleRate: Int = 0
-    private var isInitialized = false
-    
-    // 帧大小：60ms
-    private fun getFrameSize(sampleRate: Int): Int {
-        return sampleRate * 60 / 1000  // 60ms 帧
-    }
-    
-    private fun initCodec(sampleRate: Int) {
-        if (isInitialized && currentSampleRate == sampleRate) {
-            return
-        }
+        // ADPCM 量化表
+        private val INDEX_TABLE = intArrayOf(
+            -1, -1, -1, -1, 2, 4, 6, 8,
+            -1, -1, -1, -1, 2, 4, 6, 8
+        )
         
-        try {
-            // 尝试使用 Concentus 库（如果存在）
-            // Concentus 是一个纯 Java Opus 编解码器
-            val opusClass = Class.forName("org.concentus.Opus")
-            val getEncoderMethod = opusClass.getDeclaredMethod(
-                "getEncoder", 
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType
-            )
-            
-            val application = OPUS_APPLICATION_VOIP
-            
-            // 创建编码器
-            encoder = getEncoderMethod.invoke(null, sampleRate, 1, application)
-            
-            // 设置码率
-            val encoderObj = encoder
-            if (encoderObj != null) {
-                val setEncoderBitrateMethod = opusClass.getDeclaredMethod(
-                    "encoderctl",
-                    encoderObj.javaClass,
-                    Int::class.javaPrimitiveType,
-                    Int::class.javaPrimitiveType
-                )
-                // OPUS_SET_BITRATE_REQUEST = 4002
-                setEncoderBitrateMethod.invoke(null, encoderObj, 4002, bitrateKbps * 1000)
-            }
-            
-            // 创建解码器
-            val getDecoderMethod = opusClass.getDeclaredMethod(
-                "getDecoder",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType
-            )
-            decoder = getDecoderMethod.invoke(null, sampleRate, 1)
-            
-            currentSampleRate = sampleRate
-            isInitialized = true
-            Log.d(TAG, "Concentus Opus 编解码器初始化成功: ${sampleRate}Hz, ${bitrateKbps}kbps")
-            
-        } catch (e: ClassNotFoundException) {
-            Log.w(TAG, "Concentus 库未找到，使用 G.711 降级方案")
-            isInitialized = false
-        } catch (e: Exception) {
-            Log.e(TAG, "Opus 初始化失败: ${e.message}", e)
-            isInitialized = false
-        }
+        private val STEP_TABLE = intArrayOf(
+            7, 8, 9, 10, 11, 12, 13, 14,
+            16, 17, 19, 21, 23, 25, 28, 31,
+            34, 37, 41, 45, 50, 55, 60, 66,
+            73, 80, 88, 97, 107, 118, 130, 143,
+            157, 173, 190, 209, 230, 253, 279, 307,
+            337, 371, 408, 449, 494, 544, 598, 658,
+            724, 796, 876, 963, 1060, 1166, 1282, 1411,
+            1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024
+        )
     }
     
     override fun encode(pcmData: ByteArray, sampleRate: Int): ByteArray? {
         try {
-            // 尝试使用 Concentus
-            if (isInitialized && encoder != null) {
-                try {
-                    val opusClass = Class.forName("org.concentus.Opus")
-                    val encodeMethod = opusClass.getDeclaredMethod(
-                        "encode",
-                        encoder!!.javaClass,
-                        ShortArray::class.java,
-                        Int::class.javaPrimitiveType,
-                        ByteArray::class.java,
-                        Int::class.javaPrimitiveType
-                    )
-                    
-                    val frameSize = getFrameSize(sampleRate)
-                    val expectedBytes = frameSize * 2
-                    
-                    // 准备输入数据
-                    val pcmBuffer = if (pcmData.size < expectedBytes) {
-                        ByteArray(expectedBytes).apply {
-                            System.arraycopy(pcmData, 0, this, 0, pcmData.size)
-                        }
-                    } else {
-                        pcmData
+            if (pcmData.size < 2) return null
+            
+            val sampleCount = pcmData.size / 2
+            val encodedSize = (sampleCount + 1) / 2  // 每个采样点 4bit
+            val encoded = ByteArray(encodedSize + 2)  // +2 保存初始状态
+            
+            var predSample = 0
+            var predIndex = 0
+            
+            // 保存初始状态
+            encoded[0] = (predSample shr 8 and 0xFF).toByte()
+            encoded[1] = (predSample and 0xFF).toByte()
+            
+            var byteIndex = 2
+            var bitPos = 0
+            var currentByte = 0
+            
+            for (i in 0 until sampleCount) {
+                val low = pcmData[i * 2].toInt() and 0xFF
+                val high = pcmData[i * 2 + 1].toInt() and 0xFF
+                val sample = if (high >= 0x80) (high shl 8) or low - 0x10000 else (high shl 8) or low
+                
+                val diff = sample - predSample
+                var step = STEP_TABLE[predIndex.coerceIn(0, STEP_TABLE.size - 1)]
+                
+                var sign = 0
+                var absDiff = diff
+                if (diff < 0) {
+                    sign = 8
+                    absDiff = -diff
+                }
+                
+                var code = sign
+                var diffStep = step
+                for (j in 3 downTo 0) {
+                    if (absDiff >= diffStep) {
+                        code = code or (1 shl j)
+                        absDiff -= diffStep
                     }
-                    
-                    // 转换为 Short 数组
-                    val shorts = ShortArray(pcmBuffer.size / 2)
-                    for (i in shorts.indices) {
-                        val low = pcmBuffer[i * 2].toInt() and 0xFF
-                        val high = pcmBuffer[i * 2 + 1].toInt() and 0xFF
-                        shorts[i] = ((high shl 8) or low).toShort()
+                    diffStep = diffStep shr 1
+                }
+                
+                // 更新预测值
+                var diffNew = 0
+                diffStep = step
+                for (j in 3 downTo 0) {
+                    if ((code and (1 shl j)) != 0) {
+                        diffNew += diffStep
                     }
-                    
-                    // 编码输出缓冲区
-                    val maxPayloadSize = 1024
-                    val output = ByteArray(maxPayloadSize)
-                    
-                    val encodedSize = encodeMethod.invoke(
-                        null,
-                        encoder,
-                        shorts,
-                        0,
-                        output,
-                        maxPayloadSize
-                    ) as Int
-                    
-                    if (encodedSize > 0) {
-                        return output.copyOf(encodedSize)
-                    }
-                    
-                } catch (e: Exception) {
-                    Log.w(TAG, "Concentus 编码失败，降级到 G.711: ${e.message}")
+                    diffStep = diffStep shr 1
+                }
+                if ((code and 8) != 0) {
+                    diffNew = -diffNew
+                }
+                predSample += diffNew
+                predSample = predSample.coerceIn(-32768, 32767)
+                
+                predIndex += INDEX_TABLE[code and 0x0F]
+                predIndex = predIndex.coerceIn(0, STEP_TABLE.size - 1)
+                
+                // 写入 4bit
+                if (bitPos == 0) {
+                    currentByte = (code and 0x0F) shl 4
+                    bitPos = 4
+                } else {
+                    currentByte = currentByte or (code and 0x0F)
+                    encoded[byteIndex] = currentByte.toByte()
+                    byteIndex++
+                    bitPos = 0
                 }
             }
             
-            // 降级方案：使用 G.711
-            val g711Codec = G711Codec()
-            return g711Codec.encode(pcmData, sampleRate)
+            // 处理最后一个半字节
+            if (bitPos > 0) {
+                encoded[byteIndex] = currentByte.toByte()
+            }
+            
+            // 裁剪到实际大小
+            val resultSize = if (bitPos > 0) byteIndex + 1 else byteIndex
+            return encoded.copyOf(resultSize)
             
         } catch (e: Exception) {
-            Log.e(TAG, "Opus 编码失败: ${e.message}", e)
+            Log.e(TAG, "ADPCM编码失败: ${e.message}")
             return null
         }
     }
     
     override fun decode(encodedData: ByteArray, sampleRate: Int): ByteArray? {
         try {
-            // 尝试使用 Concentus
-            if (isInitialized && decoder != null) {
-                try {
-                    val opusClass = Class.forName("org.concentus.Opus")
-                    val decodeMethod = opusClass.getDeclaredMethod(
-                        "decode",
-                        decoder!!.javaClass,
-                        ByteArray::class.java,
-                        Int::class.javaPrimitiveType,
-                        ShortArray::class.java,
-                        Int::class.javaPrimitiveType,
-                        Boolean::class.javaPrimitiveType
-                    )
-                    
-                    val frameSize = getFrameSize(sampleRate)
-                    val outputShorts = ShortArray(frameSize)
-                    
-                    val decodedFrames = decodeMethod.invoke(
-                        null,
-                        decoder,
-                        encodedData,
-                        encodedData.size,
-                        outputShorts,
-                        frameSize,
-                        false
-                    ) as Int
-                    
-                    if (decodedFrames > 0) {
-                        // 转换为 Byte 数组
-                        val pcmData = ByteArray(decodedFrames * 2)
-                        for (i in 0 until decodedFrames) {
-                            val sample = outputShorts[i].toInt()
-                            val unsignedSample = if (sample < 0) sample + 0x10000 else sample
-                            pcmData[i * 2] = (unsignedSample and 0xFF).toByte()
-                            pcmData[i * 2 + 1] = (unsignedSample shr 8 and 0xFF).toByte()
-                        }
-                        return pcmData
+            if (encodedData.size < 3) return null
+            
+            // 恢复初始状态
+            var predSample = ((encodedData[0].toInt() and 0xFF) shl 8) or (encodedData[1].toInt() and 0xFF)
+            if (predSample >= 0x8000) predSample -= 0x10000
+            var predIndex = 0
+            
+            val maxSamples = (encodedData.size - 2) * 2
+            val pcmData = ByteArray(maxSamples * 2)
+            var sampleCount = 0
+            
+            var byteIndex = 2
+            var bitPos = 4
+            var currentByte = encodedData[byteIndex].toInt() and 0xFF
+            
+            while (byteIndex < encodedData.size && sampleCount < maxSamples) {
+                var code: Int
+                if (bitPos == 4) {
+                    code = (currentByte shr 4) and 0x0F
+                    bitPos = 0
+                } else {
+                    code = currentByte and 0x0F
+                    byteIndex++
+                    bitPos = 4
+                    if (byteIndex < encodedData.size) {
+                        currentByte = encodedData[byteIndex].toInt() and 0xFF
                     }
-                    
-                } catch (e: Exception) {
-                    Log.w(TAG, "Concentus 解码失败，降级到 G.711: ${e.message}")
                 }
+                
+                val step = STEP_TABLE[predIndex.coerceIn(0, STEP_TABLE.size - 1)]
+                
+                var diffNew = 0
+                var diffStep = step
+                for (j in 3 downTo 0) {
+                    if ((code and (1 shl j)) != 0) {
+                        diffNew += diffStep
+                    }
+                    diffStep = diffStep shr 1
+                }
+                if ((code and 8) != 0) {
+                    diffNew = -diffNew
+                }
+                predSample += diffNew
+                predSample = predSample.coerceIn(-32768, 32767)
+                
+                predIndex += INDEX_TABLE[code and 0x0F]
+                predIndex = predIndex.coerceIn(0, STEP_TABLE.size - 1)
+                
+                val unsignedSample = if (predSample < 0) predSample + 0x10000 else predSample
+                pcmData[sampleCount * 2] = (unsignedSample and 0xFF).toByte()
+                pcmData[sampleCount * 2 + 1] = (unsignedSample shr 8 and 0xFF).toByte()
+                sampleCount++
             }
             
-            // 降级方案：使用 G.711
-            val g711Codec = G711Codec()
-            return g711Codec.decode(encodedData, sampleRate)
+            return pcmData.copyOf(sampleCount * 2)
             
         } catch (e: Exception) {
-            Log.e(TAG, "Opus 解码失败: ${e.message}", e)
+            Log.e(TAG, "ADPCM解码失败: ${e.message}")
             return null
         }
     }
     
-    override fun getName(): String = "Opus"
-    
-    /**
-     * 设置码率（kbps）
-     * 推荐值：16-32 kbps（通话质量）
-     */
-    fun setBitrate(bitrateKbps: Int) {
-        this.bitrateKbps = bitrateKbps.coerceIn(6, 128)
-        Log.d(TAG, "Opus 码率设置为: ${this.bitrateKbps} kbps")
-    }
+    override fun getName(): String = "ADPCM"
 }
 
 object CodecFactory {
     fun getCodec(codecName: String): AudioCodec {
         return when (codecName) {
             "G.711" -> G711Codec()
-            "Opus" -> OpusCodec()
+            "ADPCM" -> AdpcmCodec()
             else -> PcmCodec()
         }
     }
