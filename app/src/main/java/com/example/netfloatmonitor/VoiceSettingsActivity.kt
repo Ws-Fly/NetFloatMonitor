@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -60,10 +61,10 @@ class VoiceSettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         val rootLayout = createLayout()
         setContentView(rootLayout)
-        
+
         initViews(rootLayout)
         loadConfig()
         registerReceivers()
@@ -122,14 +123,18 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(etMulticastPort)
 
+        // 分隔线
         val divider = View(this).apply {
             setBackgroundColor(Color.parseColor("#333333"))
-            layoutParams = LinearLayout.LayoutParams(
+            val params = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1
-            ).apply { setMargins(0, 24, 0, 24) }
+            )
+            params.setMargins(0, 24, 0, 24)
+            layoutParams = params
         }
         rootLayout.addView(divider)
 
+        // 对讲功能总开关
         val switchLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 0, 0, 0)
@@ -139,7 +144,8 @@ class VoiceSettingsActivity : AppCompatActivity() {
             text = "🔊 对讲功能"
             textSize = 17f
             setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            val params = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = params
         }
         switchLayout.addView(switchLabel)
 
@@ -157,11 +163,14 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(switchHint)
 
+        // 分隔线
         val divider2 = View(this).apply {
             setBackgroundColor(Color.parseColor("#333333"))
-            layoutParams = LinearLayout.LayoutParams(
+            val params = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1
-            ).apply { setMargins(0, 24, 0, 24) }
+            )
+            params.setMargins(0, 24, 0, 24)
+            layoutParams = params
         }
         rootLayout.addView(divider2)
 
@@ -221,7 +230,9 @@ class VoiceSettingsActivity : AppCompatActivity() {
             etMulticastIp.setText(sp.getString("multicast_ip", "224.12.34.56"))
             etMulticastPort.setText(sp.getString("multicast_port", "18000"))
             switchVoice.isChecked = sp.getBoolean("voice_enabled", false)
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            // 使用默认值
+        }
     }
 
     private fun saveConfig() {
@@ -233,7 +244,9 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 putBoolean("voice_enabled", switchVoice.isChecked)
                 apply()
             }
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            // 忽略
+        }
     }
 
     private fun registerReceivers() {
@@ -369,6 +382,8 @@ class VoiceSettingsActivity : AppCompatActivity() {
         super.onDestroy()
         try {
             LocalBroadcastManager.getInstance(this).unregisterReceiver(voiceStatusReceiver)
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            // 忽略
+        }
     }
 }
