@@ -72,14 +72,17 @@ class VoiceSettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        setupUI()
-        
-        loadConfig()
-        registerReceivers()
-        setupListeners()
-        updateUI()
-        
-        checkRecordPermission()
+        try {
+            setupUI()
+            loadConfig()
+            registerReceivers()
+            setupListeners()
+            updateUI()
+            checkRecordPermission()
+        } catch (e: Exception) {
+            Toast.makeText(this, "初始化失败: ${e.message}", Toast.LENGTH_LONG).show()
+            finish()
+        }
     }
 
     private fun setupUI() {
@@ -122,7 +125,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(etMulticastPort)
 
-        // 编解码格式（下拉选择）- 更新为 PCM / G.711 / ADPCM
+        // 编解码格式
         val codecLabel = TextView(this).apply {
             text = "编解码格式"
             textSize = 16f
@@ -142,7 +145,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(spinnerCodec)
 
-        // 采样率（下拉选择）
+        // 采样率
         val sampleLabel = TextView(this).apply {
             text = "采样率"
             textSize = 16f
@@ -200,7 +203,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(tvVoiceRole)
 
-        // 操作按钮区域
+        // 操作按钮
         val btnLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 32, 0, 0)
@@ -258,7 +261,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 Toast.makeText(this@VoiceSettingsActivity, "🔊 播放提示音 (飞行员)", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this@VoiceSettingsActivity, "播放失败: ${e.message}", Toast.LENGTH_LONG).show()
-                e.printStackTrace()
             }
         }
         rootLayout.addView(testPromptBtn)
@@ -281,16 +283,24 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 Toast.makeText(this@VoiceSettingsActivity, "🔊 播放提示音 (观察者)", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this@VoiceSettingsActivity, "播放失败: ${e.message}", Toast.LENGTH_LONG).show()
-                e.printStackTrace()
             }
         }
         rootLayout.addView(testObserverPromptBtn)
+
+        // 压缩比说明
+        val hint3 = TextView(this).apply {
+            text = "📊 压缩比: PCM=1x, G.711=2x, ADPCM=4x"
+            textSize = 12f
+            setTextColor(0xFF888888.toInt())
+            setPadding(0, 16, 0, 0)
+        }
+        rootLayout.addView(hint3)
 
         // 提示信息
         val hint1 = TextView(this).apply {
             text = "💡 role=0 飞行员模式（可讲话）"
             textSize = 13f
-            setPadding(0, 32, 0, 0)
+            setPadding(0, 16, 0, 0)
         }
         rootLayout.addView(hint1)
 
@@ -299,15 +309,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             textSize = 13f
         }
         rootLayout.addView(hint2)
-
-        // 压缩比说明
-        val hint3 = TextView(this).apply {
-            text = "📊 压缩比: PCM=1x, G.711=2x, ADPCM=4x"
-            textSize = 12f
-            textColor = 0xFF888888.toInt()
-            setPadding(0, 16, 0, 0)
-        }
-        rootLayout.addView(hint3)
 
         val backBtn = Button(this).apply {
             text = "← 返回"
