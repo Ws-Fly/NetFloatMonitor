@@ -36,8 +36,12 @@ class FloatService : Service() {
         super.onCreate()
         logger = LogManager(this)
         // ===== 初始化提示音播放器 =====
-        promptPlayer = VoicePromptPlayer(this)
-        Log.d("FloatService", "✅ VoicePromptPlayer 已初始化")
+        try {
+            promptPlayer = VoicePromptPlayer(this)
+            Log.d("FloatService", "✅ VoicePromptPlayer 初始化成功")
+        } catch (e: Exception) {
+            Log.e("FloatService", "❌ VoicePromptPlayer 初始化失败: ${e.message}")
+        }
         Log.d("FloatService", "Service onCreate 触发")
         createNotificationChannel()
         startForeground(1001, createNotification())
@@ -88,14 +92,14 @@ class FloatService : Service() {
                             lastRole = currentRole
                             Log.d("FloatService", "🔄 role 变化: $lastRole")
 
-                            // ===== 强制播报语音 =====
+                            // ===== 播报语音 =====
                             playRolePrompt(currentRole)
 
-                            // 广播给 VoiceService（如果它正在运行）
+                            // 广播给 VoiceService
                             sendRoleChangeBroadcast(currentRole)
                         }
                     } catch (e: Exception) {
-                        // 忽略
+                        Log.e("FloatService", "解析 role 失败: ${e.message}")
                     }
                 }
             } catch (e: Exception) {
@@ -106,9 +110,15 @@ class FloatService : Service() {
         Log.d("FloatService", "✅ UdpReceiver 已启动, 端口: $port")
     }
 
-    // ===== 强制播报语音 =====
+    // ===== 播报语音 =====
     private fun playRolePrompt(role: Int) {
         try {
+            // 检查 promptPlayer 是否已初始化
+            if (!::promptPlayer.isInitialized) {
+                Log.e("FloatService", "❌ promptPlayer 未初始化")
+                return
+            }
+
             if (role == 0) {
                 Log.d("FloatService", "🔊 播报: 飞行员模式")
                 promptPlayer.playPilotPrompt()
@@ -117,7 +127,8 @@ class FloatService : Service() {
                 promptPlayer.playObserverPrompt()
             }
         } catch (e: Exception) {
-            Log.e("FloatService", "播报失败: ${e.message}")
+            Log.e("FloatService", "❌ 播报失败: ${e.message}")
+            e.printStackTrace()
         }
     }
 
@@ -126,6 +137,7 @@ class FloatService : Service() {
             putExtra("ROLE", role)
         }
         LocalBroadcastManager.getInstance(this@FloatService).sendBroadcast(intent)
+        Log.d("FloatService", "📡 已广播 role: $role")
     }
 
     private fun startStatusTimer() {
