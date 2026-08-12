@@ -14,37 +14,29 @@ class LogManager(private val context: Context) {
     private val logDir: File
 
     init {
-        // ===== 关键修复：安全创建目录，防止 getExternalFilesDir 返回 null =====
-        val externalDir = context.getExternalFilesDir(null)
-        logDir = if (externalDir != null) {
-            File(externalDir, "NetFloatLogs").apply {
-                if (!exists()) {
-                    try {
-                        mkdirs()
-                    } catch (e: Exception) {
-                        Log.e("LogManager", "创建日志目录失败: ${e.message}")
-                    }
-                }
-            }
-        } else {
-            // 降级方案：使用内部存储
-            File(context.filesDir, "NetFloatLogs").apply {
-                if (!exists()) {
-                    try {
-                        mkdirs()
-                    } catch (e: Exception) {
-                        Log.e("LogManager", "创建内部日志目录失败: ${e.message}")
-                    }
+        // ===== 安全创建目录 =====
+        val dir = try {
+            context.getExternalFilesDir(null)?.let {
+                File(it, "NetFloatLogs")
+            } ?: File(context.filesDir, "NetFloatLogs")
+        } catch (e: Exception) {
+            File(context.filesDir, "NetFloatLogs")
+        }
+
+        logDir = dir.apply {
+            if (!exists()) {
+                try {
+                    mkdirs()
+                } catch (e: Exception) {
+                    Log.e("LogManager", "创建目录失败: ${e.message}")
                 }
             }
         }
-        Log.d("LogManager", "日志目录: ${logDir.absolutePath}")
     }
 
     private val isRecording = AtomicBoolean(false)
     private var currentFileName: String? = null
     private val csvHeaders = mutableListOf<String>()
-    
     private val dataQueue = LinkedBlockingQueue<String>()
     private var consumerThread: Thread? = null
 
@@ -78,12 +70,11 @@ class LogManager(private val context: Context) {
         }
         csvHeaders.clear()
         dataQueue.clear()
-        
+
         currentFileName = generateNewFileName()
         isRecording.set(true)
-        
+
         consumerThread = Thread({
-            Log.d("LogManager", ">>> 异步日志消费线程启动成功")
             while (isRecording.get() || dataQueue.isNotEmpty()) {
                 try {
                     val data = dataQueue.poll(500, java.util.concurrent.TimeUnit.MILLISECONDS)
@@ -96,13 +87,10 @@ class LogManager(private val context: Context) {
                     Log.e("LogManager", "异步处理日志异常: ${e.message}")
                 }
             }
-            Log.d("LogManager", ">>> 异步日志消费线程安全退出")
         }, "NetLogConsumer-Thread").apply {
             priority = Thread.MIN_PRIORITY
             start()
         }
-        
-        Log.d("LogManager", ">>> 新CSV会话开启: $currentFileName")
     }
 
     fun stopSession() {
@@ -112,7 +100,6 @@ class LogManager(private val context: Context) {
         consumerThread = null
         currentFileName = null
         csvHeaders.clear()
-        Log.d("LogManager", ">>> CSV会话已关闭，触发消费者线程退出信号")
     }
 
     fun save(jsonData: String) {
