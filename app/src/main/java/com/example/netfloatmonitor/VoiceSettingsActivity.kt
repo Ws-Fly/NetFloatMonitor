@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
@@ -24,16 +25,12 @@ class VoiceSettingsActivity : AppCompatActivity() {
 
     private lateinit var etMulticastIp: EditText
     private lateinit var etMulticastPort: EditText
-    private lateinit var switchPrompt: Switch
-    private lateinit var btnVoiceStart: Button
-    private lateinit var btnVoiceStop: Button
-    private lateinit var btnPtt: Button
+    private lateinit var switchVoice: Switch
     private lateinit var tvVoiceStatus: TextView
     private lateinit var tvVoiceRole: TextView
 
     private var isVoiceRunning = false
     private var currentRole = 1
-    private var isMuted = false
 
     private val REQUEST_RECORD_AUDIO = 1001
 
@@ -57,10 +54,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
                         Toast.LENGTH_SHORT
                     ).show()
                 }
-                "com.example.netfloatmonitor.VOICE_PTT_STATE" -> {
-                    isMuted = intent.getBooleanExtra("MUTED", false)
-                    updatePttButton()
-                }
             }
         }
     }
@@ -68,7 +61,10 @@ class VoiceSettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        setupUI()
+        val rootLayout = createLayout()
+        setContentView(rootLayout)
+        
+        initViews(rootLayout)
         loadConfig()
         registerReceivers()
         setupListeners()
@@ -76,165 +72,155 @@ class VoiceSettingsActivity : AppCompatActivity() {
         checkRecordPermission()
     }
 
-    private fun setupUI() {
-        val rootLayout = LinearLayout(this).apply {
+    private fun createLayout(): LinearLayout {
+        return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 32, 32, 32)
+            setBackgroundColor(Color.parseColor("#1A1A2E"))
         }
+    }
 
+    private fun initViews(rootLayout: LinearLayout) {
         val titleView = TextView(this).apply {
-            text = "🎤 语音对讲设置"
-            textSize = 24f
-            setPadding(0, 0, 0, 32)
+            text = "🎤 语音对讲"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            setPadding(0, 0, 0, 24)
         }
         rootLayout.addView(titleView)
 
-        // ===== 组播地址 =====
         val ipLabel = TextView(this).apply {
             text = "组播地址"
-            textSize = 16f
+            textSize = 15f
+            setTextColor(Color.parseColor("#AAAAAA"))
         }
         rootLayout.addView(ipLabel)
 
         etMulticastIp = EditText(this).apply {
-            setText("224.0.0.1")
+            setText("224.12.34.56")
             setPadding(16, 16, 16, 16)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.parseColor("#666666"))
+            setBackgroundResource(android.R.drawable.editbox_background)
         }
         rootLayout.addView(etMulticastIp)
 
-        // ===== 组播端口 =====
         val portLabel = TextView(this).apply {
             text = "组播端口"
-            textSize = 16f
-            setPadding(0, 24, 0, 0)
+            textSize = 15f
+            setTextColor(Color.parseColor("#AAAAAA"))
+            setPadding(0, 20, 0, 0)
         }
         rootLayout.addView(portLabel)
 
         etMulticastPort = EditText(this).apply {
-            setText("50000")
+            setText("18000")
             setPadding(16, 16, 16, 16)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.parseColor("#666666"))
+            setBackgroundResource(android.R.drawable.editbox_background)
         }
         rootLayout.addView(etMulticastPort)
 
-        // ===== 提示音开关 =====
+        val divider = View(this).apply {
+            setBackgroundColor(Color.parseColor("#333333"))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1
+            ).apply { setMargins(0, 24, 0, 24) }
+        }
+        rootLayout.addView(divider)
+
         val switchLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 24, 0, 0)
+            setPadding(0, 0, 0, 0)
         }
 
         val switchLabel = TextView(this).apply {
-            text = "启用提示音"
-            textSize = 16f
+            text = "🔊 对讲功能"
+            textSize = 17f
+            setTextColor(Color.WHITE)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         switchLayout.addView(switchLabel)
 
-        switchPrompt = Switch(this)
-        switchLayout.addView(switchPrompt)
+        switchVoice = Switch(this).apply {
+            isChecked = false
+        }
+        switchLayout.addView(switchVoice)
         rootLayout.addView(switchLayout)
 
-        // ===== 状态显示 =====
+        val switchHint = TextView(this).apply {
+            text = "开启后可讲话和收听"
+            textSize = 12f
+            setTextColor(Color.parseColor("#888888"))
+            setPadding(0, 4, 0, 0)
+        }
+        rootLayout.addView(switchHint)
+
+        val divider2 = View(this).apply {
+            setBackgroundColor(Color.parseColor("#333333"))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1
+            ).apply { setMargins(0, 24, 0, 24) }
+        }
+        rootLayout.addView(divider2)
+
         val statusLabel = TextView(this).apply {
             text = "📊 实时状态"
-            textSize = 18f
-            setPadding(0, 32, 0, 16)
+            textSize = 16f
+            setTextColor(Color.parseColor("#DDDDDD"))
+            setPadding(0, 0, 0, 12)
         }
         rootLayout.addView(statusLabel)
 
         tvVoiceStatus = TextView(this).apply {
             text = "状态: ○ 未连接"
-            textSize = 16f
+            textSize = 15f
+            setTextColor(Color.parseColor("#E74C3C"))
         }
         rootLayout.addView(tvVoiceStatus)
 
         tvVoiceRole = TextView(this).apply {
             text = "角色: 观察者 🎧"
-            textSize = 16f
-            setPadding(0, 8, 0, 0)
+            textSize = 15f
+            setTextColor(Color.parseColor("#3498DB"))
+            setPadding(0, 6, 0, 0)
         }
         rootLayout.addView(tvVoiceRole)
-
-        // ===== 操作按钮 =====
-        val btnLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 32, 0, 0)
-        }
-
-        btnVoiceStart = Button(this).apply {
-            text = "启动语音"
-            textSize = 16f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(0, 0, 16, 0)
-            }
-        }
-        btnLayout.addView(btnVoiceStart)
-
-        btnVoiceStop = Button(this).apply {
-            text = "停止语音"
-            textSize = 16f
-            isEnabled = false
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        btnLayout.addView(btnVoiceStop)
-        rootLayout.addView(btnLayout)
-
-        // ===== PTT 按钮 =====
-        btnPtt = Button(this).apply {
-            text = "🔇 静音"
-            textSize = 16f
-            isEnabled = false
-            setPadding(0, 24, 0, 0)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(0, 16, 0, 0)
-            }
-        }
-        rootLayout.addView(btnPtt)
-
-        // ===== 信息提示 =====
-        val info = TextView(this).apply {
-            text = "📡 固定 8kHz G.711 μ-law 编码\n压缩比 2:1，60ms 批量发送"
-            textSize = 13f
-            setPadding(0, 24, 0, 0)
-            setTextColor(0xFF888888.toInt())
-        }
-        rootLayout.addView(info)
 
         val hint1 = TextView(this).apply {
             text = "💡 role=0 飞行员模式（可讲话）"
             textSize = 13f
-            setPadding(0, 16, 0, 0)
+            setTextColor(Color.parseColor("#888888"))
+            setPadding(0, 24, 0, 0)
         }
         rootLayout.addView(hint1)
 
         val hint2 = TextView(this).apply {
             text = "💡 role=1 观察者模式（仅收听）"
             textSize = 13f
+            setTextColor(Color.parseColor("#888888"))
+            setPadding(0, 4, 0, 0)
         }
         rootLayout.addView(hint2)
 
         val backBtn = Button(this).apply {
             text = "← 返回"
-            textSize = 16f
-            setPadding(0, 32, 0, 0)
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            setPadding(0, 24, 0, 0)
+            setBackgroundColor(Color.TRANSPARENT)
         }
         backBtn.setOnClickListener { finish() }
         rootLayout.addView(backBtn)
-
-        val scrollView = ScrollView(this).apply {
-            addView(rootLayout)
-        }
-        setContentView(scrollView)
     }
 
     private fun loadConfig() {
         try {
             val sp = getSharedPreferences("voice_config", Context.MODE_PRIVATE)
-            etMulticastIp.setText(sp.getString("multicast_ip", "224.0.0.1"))
-            etMulticastPort.setText(sp.getString("multicast_port", "50000"))
-            switchPrompt.isChecked = sp.getBoolean("prompt_enabled", true)
+            etMulticastIp.setText(sp.getString("multicast_ip", "224.12.34.56"))
+            etMulticastPort.setText(sp.getString("multicast_port", "18000"))
+            switchVoice.isChecked = sp.getBoolean("voice_enabled", false)
         } catch (e: Exception) {}
     }
 
@@ -244,7 +230,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
             sp.edit().apply {
                 putString("multicast_ip", etMulticastIp.text.toString())
                 putString("multicast_port", etMulticastPort.text.toString())
-                putBoolean("prompt_enabled", switchPrompt.isChecked)
+                putBoolean("voice_enabled", switchVoice.isChecked)
                 apply()
             }
         } catch (e: Exception) {}
@@ -254,37 +240,22 @@ class VoiceSettingsActivity : AppCompatActivity() {
         val filter = IntentFilter().apply {
             addAction("com.example.netfloatmonitor.VOICE_STATUS")
             addAction("com.example.netfloatmonitor.VOICE_ROLE_CHANGE")
-            addAction("com.example.netfloatmonitor.VOICE_PTT_STATE")
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(voiceStatusReceiver, filter)
     }
 
     private fun setupListeners() {
-        btnVoiceStart.setOnClickListener {
-            if (!checkRecordPermission()) {
-                requestRecordPermission()
-                return@setOnClickListener
-            }
-            saveConfig()
-            startVoiceService()
-        }
-
-        btnVoiceStop.setOnClickListener {
-            stopVoiceService()
-        }
-
-        btnPtt.setOnClickListener {
-            if (isVoiceRunning && currentRole == 0) {
-                isMuted = !isMuted
-                broadcastPttState(isMuted)
-                updatePttButton()
-                Toast.makeText(
-                    this,
-                    if (isMuted) "🔇 已静音" else "🎤 已取消静音",
-                    Toast.LENGTH_SHORT
-                ).show()
-            } else if (isVoiceRunning && currentRole != 0) {
-                Toast.makeText(this, "⚠️ 观察者模式无法讲话", Toast.LENGTH_SHORT).show()
+        switchVoice.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                if (!checkRecordPermission()) {
+                    requestRecordPermission()
+                    switchVoice.isChecked = false
+                    return@setOnCheckedChangeListener
+                }
+                saveConfig()
+                startVoiceService()
+            } else {
+                stopVoiceService()
             }
         }
     }
@@ -319,8 +290,11 @@ class VoiceSettingsActivity : AppCompatActivity() {
         if (requestCode == REQUEST_RECORD_AUDIO) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "✅ 录音权限已获取", Toast.LENGTH_SHORT).show()
+                switchVoice.isChecked = true
+                startVoiceService()
             } else {
                 Toast.makeText(this, "⚠️ 需要录音权限才能讲话", Toast.LENGTH_SHORT).show()
+                switchVoice.isChecked = false
             }
         }
     }
@@ -328,16 +302,17 @@ class VoiceSettingsActivity : AppCompatActivity() {
     private fun startVoiceService() {
         val ip = etMulticastIp.text.toString().trim()
         val portStr = etMulticastPort.text.toString().trim()
-        val promptEnabled = switchPrompt.isChecked
 
         if (ip.isEmpty() || portStr.isEmpty()) {
             Toast.makeText(this, "请填写组播地址和端口", Toast.LENGTH_SHORT).show()
+            switchVoice.isChecked = false
             return
         }
 
         val port = portStr.toIntOrNull()
         if (port == null || port !in 1024..65535) {
             Toast.makeText(this, "端口号无效（1024-65535）", Toast.LENGTH_SHORT).show()
+            switchVoice.isChecked = false
             return
         }
 
@@ -345,7 +320,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
             putExtra("ACTION", "START")
             putExtra("MULTICAST_IP", ip)
             putExtra("MULTICAST_PORT", port)
-            putExtra("PROMPT_ENABLED", promptEnabled)
+            putExtra("PROMPT_ENABLED", true)
         }
 
         try {
@@ -356,9 +331,10 @@ class VoiceSettingsActivity : AppCompatActivity() {
             }
             isVoiceRunning = true
             updateUI()
-            Toast.makeText(this, "🎧 语音服务启动中...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "🎧 语音对讲已开启", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "启动失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            switchVoice.isChecked = false
         }
     }
 
@@ -370,18 +346,10 @@ class VoiceSettingsActivity : AppCompatActivity() {
             startService(intent)
             isVoiceRunning = false
             updateUI()
-            Toast.makeText(this, "⏹ 语音服务已停止", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "⏹ 语音对讲已关闭", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "停止失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    private fun broadcastPttState(muted: Boolean) {
-        val intent = Intent("com.example.netfloatmonitor.VOICE_PTT_STATE").apply {
-            putExtra("MUTED", muted)
-            putExtra("IS_PILOT", currentRole == 0)
-        }
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
     private fun updateUI() {
@@ -390,27 +358,11 @@ class VoiceSettingsActivity : AppCompatActivity() {
         } else {
             "状态: ○ 未连接"
         }
-        tvVoiceStatus.setTextColor(if (isVoiceRunning) 0xFF4CAF50.toInt() else 0xFFE74C3C.toInt())
+        tvVoiceStatus.setTextColor(if (isVoiceRunning) Color.parseColor("#4CAF50") else Color.parseColor("#E74C3C"))
 
         val roleText = if (currentRole == 0) "飞行员 🎤" else "观察者 🎧"
         tvVoiceRole.text = "角色: $roleText"
-        tvVoiceRole.setTextColor(if (currentRole == 0) 0xFF2ECC71.toInt() else 0xFF3498DB.toInt())
-
-        btnVoiceStart.isEnabled = !isVoiceRunning
-        btnVoiceStop.isEnabled = isVoiceRunning
-        btnPtt.isEnabled = isVoiceRunning && currentRole == 0
-        
-        updatePttButton()
-    }
-
-    private fun updatePttButton() {
-        if (isVoiceRunning && currentRole == 0) {
-            btnPtt.isEnabled = true
-            btnPtt.text = if (isMuted) "🔇 取消静音" else "🎤 静音"
-        } else {
-            btnPtt.isEnabled = false
-            btnPtt.text = if (isVoiceRunning) "⛔ 仅收听模式" else "⛔ 服务未启动"
-        }
+        tvVoiceRole.setTextColor(if (currentRole == 0) Color.parseColor("#2ECC71") else Color.parseColor("#3498DB"))
     }
 
     override fun onDestroy() {
