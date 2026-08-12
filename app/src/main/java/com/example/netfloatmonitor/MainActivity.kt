@@ -1,184 +1,56 @@
-package com.example.netfloatmonitor
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.net.Uri
-import android.os.Bundle
-import android.provider.Settings
-import android.widget.Button
-import android.widget.EditText
-import android.widget.TextView
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import java.io.File
+    <!-- 权限 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" android:minSdkVersion="31" />
 
-class MainActivity : AppCompatActivity() {
+    <application
+        android:allowBackup="true"
+        android:label="NetFloatMonitor"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="true"
+        tools:targetApi="31">
 
-    private lateinit var ipEdit: EditText
-    private lateinit var portEdit: EditText
-    private lateinit var logPath: TextView
-    private lateinit var logManager: LogManager
-    private lateinit var tvStatusInfo: TextView
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
-    private val statusReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent == null) return
+        <activity
+            android:name=".VoiceSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
 
-            val isStopped = intent.getBooleanExtra("IS_STOPPED", false)
-            if (isStopped) {
-                tvStatusInfo.text = "链路状态: 已停止\n当前文件: 未开启监控\n已收数据: 0 包 | 速率: 0 Hz"
-                return
-            }
+        <service
+            android:name=".FloatService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false" />
 
-            val total = intent.getIntExtra("TOTAL_PACKETS", 0)
-            val hz = intent.getIntExtra("HZ", 0)
-            val currentFile = logManager.getCurrentFileName()
+        <service
+            android:name=".VoiceService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync|microphone" />
 
-            tvStatusInfo.text = """
-                链路状态: 正在监听...
-                当前文件: $currentFile
-                已收数据: $total 包 | 速率: $hz Hz
-            """.trimIndent()
-        }
-    }
+    </application>
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        try {
-            setContentView(R.layout.activity_main)
-
-            logManager = LogManager(this)
-
-            ipEdit = findViewById(R.id.editIp)
-            portEdit = findViewById(R.id.editPort)
-            logPath = findViewById(R.id.logPath)
-            tvStatusInfo = findViewById(R.id.tvStatusInfo)
-
-            val startBtn = findViewById<Button>(R.id.startBtn)
-            val stopBtn = findViewById<Button>(R.id.stopBtn)
-            val clearBtn = findViewById<Button>(R.id.clearBtn)
-
-            loadConfig()
-            showLogPath()
-
-            tvStatusInfo.text = "链路状态: 待机\n当前文件: 未开启监控\n已收数据: 0 包 | 速率: 0 Hz"
-
-            startBtn.setOnClickListener {
-                saveConfig()
-
-                if (!Settings.canDrawOverlays(this)) {
-                    val intent = Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:$packageName")
-                    )
-                    startActivity(intent)
-                    Toast.makeText(this, "请开启悬浮窗权限", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-
-                val port = portEdit.text.toString().toIntOrNull() ?: 16789
-
-                logManager.startNewSession()
-                val previewFile = logManager.getCurrentFileName()
-                tvStatusInfo.text = """
-                    链路状态: 正在初始化...
-                    当前文件: $previewFile
-                    已收数据: 0 包 | 速率: 0 Hz
-                """.trimIndent()
-
-                val serviceIntent = Intent(this, FloatService::class.java).apply {
-                    putExtra("PORT", port)
-                    putExtra("IP", ipEdit.text.toString())
-                }
-
-                if (android.os.Build.VERSION.SDK_INT >= 26) {
-                    startForegroundService(serviceIntent)
-                } else {
-                    startService(serviceIntent)
-                }
-
-                Toast.makeText(this, "UDP监听启动 端口:$port", Toast.LENGTH_SHORT).show()
-            }
-
-            stopBtn.setOnClickListener {
-                stopService(Intent(this, FloatService::class.java))
-                Toast.makeText(this, "监听已停止，CSV表格已封存", Toast.LENGTH_SHORT).show()
-            }
-
-            clearBtn.setOnClickListener {
-                clearLog()
-            }
-
-        } catch (e: Exception) {
-            // 捕获异常，显示错误
-            val errorView = TextView(this).apply {
-                text = "❌ 启动失败:\n${e.message}"
-                textSize = 16f
-                setTextColor(0xFFFF0000.toInt())
-                setPadding(32, 32, 32, 32)
-            }
-            setContentView(errorView)
-            e.printStackTrace()
-        }
-    }
-
-    override fun onStart() {
-        super.onStart()
-        try {
-            LocalBroadcastManager.getInstance(this).registerReceiver(
-                statusReceiver,
-                IntentFilter("com.example.netfloatmonitor.STATUS_UPDATE")
-            )
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        try {
-            LocalBroadcastManager.getInstance(this).unregisterReceiver(statusReceiver)
-        } catch (e: Exception) {
-            // 忽略
-        }
-    }
-
-    private fun saveConfig() {
-        getSharedPreferences("net_config", Context.MODE_PRIVATE)
-            .edit()
-            .putString("ip", ipEdit.text.toString())
-            .putString("port", portEdit.text.toString())
-            .apply()
-    }
-
-    private fun loadConfig() {
-        val sp = getSharedPreferences("net_config", Context.MODE_PRIVATE)
-        ipEdit.setText(sp.getString("ip", "192.168.144.33"))
-        portEdit.setText(sp.getString("port", "16789"))
-    }
-
-    private fun showLogPath() {
-        logPath.text = "日志目录:\n${logManager.getLogPath()}"
-    }
-
-    private fun clearLog() {
-        val files: List<File> = logManager.getLogFiles()
-        var deletedCount = 0
-
-        files.forEach { file ->
-            if (file.exists() && file.delete()) {
-                deletedCount++
-            }
-        }
-
-        Toast.makeText(
-            this,
-            if (deletedCount > 0) "已成功清除 $deletedCount 个历史CSV表格" else "没有需要清除的历史数据",
-            Toast.LENGTH_SHORT
-        ).show()
-    }
-}
+</manifest>
