@@ -19,7 +19,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var logPath: TextView
     private lateinit var logManager: LogManager
     private lateinit var tvStatusInfo: TextView
-    private lateinit var btnVoiceSettings: Button
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -53,7 +52,6 @@ class MainActivity : AppCompatActivity() {
         portEdit = findViewById(R.id.editPort)
         logPath = findViewById(R.id.logPath)
         tvStatusInfo = findViewById(R.id.tvStatusInfo)
-        btnVoiceSettings = findViewById(R.id.btnVoiceSettings)
 
         val startBtn = findViewById<Button>(R.id.startBtn)
         val stopBtn = findViewById<Button>(R.id.stopBtn)
@@ -108,12 +106,6 @@ class MainActivity : AppCompatActivity() {
 
         clearBtn.setOnClickListener {
             clearLog()
-        }
-
-        // 语音对讲设置入口
-        btnVoiceSettings.setOnClickListener {
-            val intent = Intent(this, VoiceSettingsActivity::class.java)
-            startActivity(intent)
         }
     }
 
