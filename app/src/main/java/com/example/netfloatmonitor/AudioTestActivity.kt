@@ -19,6 +19,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.math.PI
 import kotlin.math.sin
@@ -33,21 +34,20 @@ class AudioTestActivity : AppCompatActivity() {
     private lateinit var btnTestSpeaker: Button
     private lateinit var btnTestPrompt: Button
 
-    private var isRecording = false
+    private val isRecording = AtomicBoolean(false)
     private val logMessages = mutableListOf<String>()
     private val handler = Handler(Looper.getMainLooper())
+    private var audioTrack: AudioTrack? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ===== 动态创建布局 =====
         val scrollView = ScrollView(this)
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 32, 32, 32)
         }
 
-        // 标题
         val title = TextView(this).apply {
             text = "🔬 音频测试工具"
             textSize = 28f
@@ -55,7 +55,6 @@ class AudioTestActivity : AppCompatActivity() {
         }
         rootLayout.addView(title)
 
-        // 状态显示
         tvStatus = TextView(this).apply {
             text = "状态: 就绪"
             textSize = 18f
@@ -63,7 +62,6 @@ class AudioTestActivity : AppCompatActivity() {
         }
         rootLayout.addView(tvStatus)
 
-        // 日志显示
         tvLog = TextView(this).apply {
             text = "📋 日志:\n等待测试..."
             textSize = 14f
@@ -72,7 +70,6 @@ class AudioTestActivity : AppCompatActivity() {
         }
         rootLayout.addView(tvLog)
 
-        // ===== 测试1: 麦克风录音并播放 =====
         btnTestMic = Button(this).apply {
             text = "🎙️ 测试麦克风 (录音3秒 → 播放)"
             textSize = 18f
@@ -84,7 +81,6 @@ class AudioTestActivity : AppCompatActivity() {
         }
         rootLayout.addView(btnTestMic)
 
-        // ===== 测试2: 播放测试音 =====
         btnTestSpeaker = Button(this).apply {
             text = "🔊 测试扬声器 (播放440Hz)"
             textSize = 18f
@@ -96,7 +92,6 @@ class AudioTestActivity : AppCompatActivity() {
         }
         rootLayout.addView(btnTestSpeaker)
 
-        // ===== 测试3: 提示音 =====
         btnTestPrompt = Button(this).apply {
             text = "🔊 测试提示音 (合成音)"
             textSize = 18f
@@ -108,7 +103,6 @@ class AudioTestActivity : AppCompatActivity() {
         }
         rootLayout.addView(btnTestPrompt)
 
-        // ===== 说明 =====
         val info = TextView(this).apply {
             text = """
                 💡 测试说明:
@@ -133,8 +127,7 @@ class AudioTestActivity : AppCompatActivity() {
 
         setupListeners()
         checkPermission()
-
-        addLog("✅ 测试工具已启动，点击按钮测试")
+        addLog("✅ 测试工具已启动")
     }
 
     private fun setupListeners() {
@@ -143,7 +136,7 @@ class AudioTestActivity : AppCompatActivity() {
                 requestPermission()
                 return@setOnClickListener
             }
-            if (!isRecording) {
+            if (!isRecording.get()) {
                 testMic()
             } else {
                 Toast.makeText(this, "正在录音中，请稍候...", Toast.LENGTH_SHORT).show()
@@ -197,7 +190,6 @@ class AudioTestActivity : AppCompatActivity() {
         }
     }
 
-    // ===== 更新UI =====
     private fun updateStatus(text: String) {
         handler.post {
             tvStatus.text = "状态: $text"
@@ -207,7 +199,7 @@ class AudioTestActivity : AppCompatActivity() {
     private fun addLog(text: String) {
         handler.post {
             logMessages.add(text)
-            if (logMessages.size > 20) {
+            if (logMessages.size > 30) {
                 logMessages.removeAt(0)
             }
             tvLog.text = "📋 日志:\n${logMessages.joinToString("\n")}"
@@ -215,10 +207,10 @@ class AudioTestActivity : AppCompatActivity() {
     }
 
     // ============================================================
-    // 测试1: 麦克风录音 + 播放
+    // 测试1: 麦克风录音 + 播放（修复数组越界）
     // ============================================================
     private fun testMic() {
-        isRecording = true
+        isRecording.set(true)
         btnTestMic.isEnabled = false
         updateStatus("🔴 录音中... 请说话 (3秒)")
         addLog("🔴 开始录音...")
@@ -229,7 +221,6 @@ class AudioTestActivity : AppCompatActivity() {
                 val channelConfig = AudioFormat.CHANNEL_IN_MONO
                 val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
-                // 获取最小缓冲区
                 val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
                 addLog("📊 最小缓冲区: $minBufferSize")
                 if (minBufferSize <= 0) {
@@ -237,7 +228,7 @@ class AudioTestActivity : AppCompatActivity() {
                         updateStatus("❌ 获取缓冲区失败")
                         addLog("❌ minBufferSize <= 0")
                         btnTestMic.isEnabled = true
-                        isRecording = false
+                        isRecording.set(false)
                     }
                     return@thread
                 }
@@ -256,45 +247,44 @@ class AudioTestActivity : AppCompatActivity() {
                         updateStatus("❌ AudioRecord 初始化失败")
                         addLog("❌ AudioRecord.state = ${record.state}")
                         btnTestMic.isEnabled = true
-                        isRecording = false
+                        isRecording.set(false)
                     }
                     record.release()
                     return@thread
                 }
                 addLog("✅ AudioRecord 初始化成功")
 
-                // 开始录音
                 record.startRecording()
                 if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                     handler.post {
                         updateStatus("❌ 启动录音失败")
                         addLog("❌ recordingState = ${record.recordingState}")
                         btnTestMic.isEnabled = true
-                        isRecording = false
+                        isRecording.set(false)
                     }
                     record.release()
                     return@thread
                 }
                 addLog("✅ 录音已启动")
 
-                // 录音 3 秒
+                // ===== 修复：使用 ArrayList 动态收集数据 =====
                 val durationMs = 3000
-                val totalSamples = sampleRate * durationMs / 1000
-                val pcmData = ByteArray(totalSamples * 2)
+                val pcmDataList = mutableListOf<ByteArray>()
                 var totalRead = 0
                 val buffer = ByteArray(bufferSize)
 
-                while (totalRead < pcmData.size && isRecording) {
+                val startTime = System.currentTimeMillis()
+                while (System.currentTimeMillis() - startTime < durationMs && isRecording.get()) {
                     val readSize = record.read(buffer, 0, bufferSize)
                     if (readSize > 0) {
-                        System.arraycopy(buffer, 0, pcmData, totalRead, readSize)
+                        val data = buffer.copyOf(readSize)
+                        pcmDataList.add(data)
                         totalRead += readSize
                     }
                 }
 
-                addLog("📊 录音完成，共 ${totalRead} 字节")
+                addLog("📊 录音完成，共 $totalRead 字节，${pcmDataList.size} 个数据块")
 
-                // 停止录音
                 record.stop()
                 record.release()
 
@@ -303,34 +293,40 @@ class AudioTestActivity : AppCompatActivity() {
                         updateStatus("❌ 未录到任何数据")
                         addLog("❌ totalRead = 0")
                         btnTestMic.isEnabled = true
-                        isRecording = false
+                        isRecording.set(false)
                     }
                     return@thread
                 }
 
-                handler.post {
-                    updateStatus("🔊 播放录音中...")
-                    addLog("🔊 开始播放录音")
+                // ===== 合并所有数据块 =====
+                val pcmData = ByteArray(totalRead)
+                var offset = 0
+                for (chunk in pcmDataList) {
+                    System.arraycopy(chunk, 0, pcmData, offset, chunk.size)
+                    offset += chunk.size
                 }
 
-                // 播放录音
+                handler.post {
+                    updateStatus("🔊 播放录音中...")
+                    addLog("🔊 开始播放录音 (${pcmData.size} 字节)")
+                }
+
                 val track = createAudioTrack(sampleRate)
                 if (track == null) {
                     handler.post {
                         updateStatus("❌ AudioTrack 创建失败")
                         addLog("❌ AudioTrack 创建失败")
                         btnTestMic.isEnabled = true
-                        isRecording = false
+                        isRecording.set(false)
                     }
                     return@thread
                 }
 
-                // 写入数据并播放
-                track.write(pcmData, 0, totalRead)
+                // ===== 写入数据并播放 =====
+                track.write(pcmData, 0, pcmData.size)
                 track.play()
 
-                // 等待播放完成
-                Thread.sleep(durationMs + 200L)
+                Thread.sleep(durationMs + 300L)
 
                 track.stop()
                 track.release()
@@ -340,7 +336,7 @@ class AudioTestActivity : AppCompatActivity() {
                     addLog("✅ 麦克风测试完成")
                     Toast.makeText(this, "✅ 录音播放完成，请听是否有声音", Toast.LENGTH_LONG).show()
                     btnTestMic.isEnabled = true
-                    isRecording = false
+                    isRecording.set(false)
                 }
 
             } catch (e: Exception) {
@@ -348,7 +344,7 @@ class AudioTestActivity : AppCompatActivity() {
                     updateStatus("❌ 异常: ${e.message}")
                     addLog("❌ 异常: ${e.message}")
                     btnTestMic.isEnabled = true
-                    isRecording = false
+                    isRecording.set(false)
                 }
                 e.printStackTrace()
             }
@@ -369,7 +365,6 @@ class AudioTestActivity : AppCompatActivity() {
                 val durationMs = 2000
                 val numSamples = sampleRate * durationMs / 1000
 
-                // 生成 440Hz 正弦波
                 val pcmData = ByteArray(numSamples * 2)
                 for (i in 0 until numSamples) {
                     val t = i.toFloat() / sampleRate
@@ -420,7 +415,7 @@ class AudioTestActivity : AppCompatActivity() {
     }
 
     // ============================================================
-    // 测试3: 提示音
+    // 测试3: 提示音（修复噪音问题）
     // ============================================================
     private fun testPrompt() {
         btnTestPrompt.isEnabled = false
@@ -430,25 +425,24 @@ class AudioTestActivity : AppCompatActivity() {
         thread {
             try {
                 val sampleRate = 16000
-                val durationMs = 800
+                val durationMs = 600
                 val numSamples = sampleRate * durationMs / 1000
 
                 val pcmData = ByteArray(numSamples * 2)
                 for (i in 0 until numSamples) {
                     val t = i.toFloat() / sampleRate
                     var sample = 0f
-                    // 基频 300Hz + 谐波
-                    for (h in 1..5) {
-                        sample += (1.0f / h) * sin(2.0f * PI.toFloat() * 300f * h * t)
-                    }
-                    // 包络
+                    // 使用 880Hz + 1100Hz 双音（更清晰的提示音）
+                    sample += 0.4f * sin(2.0f * PI.toFloat() * 880f * t)
+                    sample += 0.3f * sin(2.0f * PI.toFloat() * 1100f * t)
+                    // 包络（快速起音，平滑衰减）
                     val envelope = when {
-                        t < 0.05f -> t / 0.05f
-                        t > 0.7f -> 1.0f - (t - 0.7f) / 0.1f
-                        else -> 1.0f
+                        t < 0.01f -> t / 0.01f
+                        t < 0.2f -> 1.0f - (t - 0.01f) * 0.8f / 0.19f
+                        else -> 0.2f + 0.8f * (1.0f - (t - 0.2f) / 0.4f)
                     }
-                    sample *= 0.5f * envelope
-                    val intSample = (sample * 32767).toInt().coerceIn(-32768, 32767)
+                    sample *= envelope.coerceAtLeast(0f)
+                    val intSample = (sample * 30000).toInt().coerceIn(-32768, 32767)
                     val unsigned = if (intSample < 0) intSample + 0x10000 else intSample
                     pcmData[i * 2] = (unsigned and 0xFF).toByte()
                     pcmData[i * 2 + 1] = (unsigned shr 8 and 0xFF).toByte()
@@ -456,7 +450,8 @@ class AudioTestActivity : AppCompatActivity() {
 
                 addLog("📊 生成提示音，${pcmData.size} 字节")
 
-                val track = createAudioTrack(sampleRate)
+                // ===== 使用 MODE_STATIC 模式播放（更可靠） =====
+                val track = createStaticAudioTrack(sampleRate, pcmData.size)
                 if (track == null) {
                     handler.post {
                         updateStatus("❌ AudioTrack 创建失败")
@@ -470,7 +465,7 @@ class AudioTestActivity : AppCompatActivity() {
                 track.play()
                 addLog("✅ AudioTrack 开始播放")
 
-                Thread.sleep(durationMs + 200L)
+                Thread.sleep(durationMs + 300L)
 
                 track.stop()
                 track.release()
@@ -494,13 +489,13 @@ class AudioTestActivity : AppCompatActivity() {
     }
 
     // ============================================================
-    // 创建 AudioTrack
+    // 创建 AudioTrack（MODE_STREAM）
     // ============================================================
     private fun createAudioTrack(sampleRate: Int): AudioTrack? {
         return try {
             val attrs = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build()
 
             val format = AudioFormat.Builder()
@@ -514,7 +509,7 @@ class AudioTestActivity : AppCompatActivity() {
                 AudioFormat.CHANNEL_OUT_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
-            val bufferSize = if (minBufferSize > 0) minBufferSize * 2 else 8192
+            val bufferSize = if (minBufferSize > 0) maxOf(minBufferSize * 2, 8192) else 8192
 
             AudioTrack(attrs, format, bufferSize, AudioTrack.MODE_STREAM, 0)
         } catch (e: Exception) {
@@ -523,8 +518,36 @@ class AudioTestActivity : AppCompatActivity() {
         }
     }
 
+    // ============================================================
+    // 创建 AudioTrack（MODE_STATIC - 用于提示音）
+    // ============================================================
+    private fun createStaticAudioTrack(sampleRate: Int, dataSize: Int): AudioTrack? {
+        return try {
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+
+            val format = AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(sampleRate)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .build()
+
+            val bufferSize = maxOf(dataSize, 8192)
+
+            AudioTrack(attrs, format, bufferSize, AudioTrack.MODE_STATIC, 0)
+        } catch (e: Exception) {
+            addLog("❌ 创建 Static AudioTrack 失败: ${e.message}")
+            null
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        isRecording = false
+        isRecording.set(false)
+        audioTrack?.let {
+            try { it.stop(); it.release() } catch (e: Exception) {}
+        }
     }
 }
