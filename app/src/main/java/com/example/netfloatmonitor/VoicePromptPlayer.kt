@@ -19,29 +19,26 @@ class VoicePromptPlayer(private val context: Context) {
     }
 
     fun playPilotPrompt() {
-        // ===== 播放 "飞行员模式" 语音 =====
-        playVoice("飞行员模式", 880f, 300)
+        Log.d(TAG, "🔊 playPilotPrompt() 被调用")
+        playVoice(880f, 300, "飞行员")
     }
 
     fun playObserverPrompt() {
-        // ===== 播放 "观察者模式" 语音 =====
-        playVoice("观察者模式", 660f, 300)
+        Log.d(TAG, "🔊 playObserverPrompt() 被调用")
+        playVoice(660f, 300, "观察者")
     }
 
-    private fun playVoice(text: String, freq: Float, durationMs: Int) {
+    private fun playVoice(freq: Float, durationMs: Int, label: String) {
         try {
-            Log.d(TAG, "🔊 开始播放语音播报: $text")
+            Log.d(TAG, "🔊 开始播放: $label")
 
-            // ===== 使用双音多频模拟语音（更清晰） =====
             val numSamples = SAMPLE_RATE * durationMs / 1000
             val pcmData = ByteArray(numSamples * 2)
 
             for (i in 0 until numSamples) {
                 val t = i.toFloat() / SAMPLE_RATE
-                // 双音叠加（类似电话拨号音效，清晰可辨）
-                var sample = 0.45f * sin(2.0f * PI.toFloat() * freq * t)
-                sample += 0.35f * sin(2.0f * PI.toFloat() * (freq * 1.5f) * t)
-                // 包络：快速起音 + 平滑衰减
+                var sample = 0.5f * sin(2.0f * PI.toFloat() * freq * t)
+                sample += 0.3f * sin(2.0f * PI.toFloat() * (freq * 1.5f) * t)
                 val envelope = when {
                     t < 0.02f -> t / 0.02f
                     t < 0.15f -> 1.0f
@@ -54,13 +51,21 @@ class VoicePromptPlayer(private val context: Context) {
                 pcmData[i * 2 + 1] = (unsigned shr 8 and 0xFF).toByte()
             }
 
-            // ===== 播放音频 =====
+            // ===== 获取 AudioManager =====
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            val originalVolume = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-            val maxVolume = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
-            val targetVolume = (maxVolume * 0.5f).toInt().coerceAtLeast(1)
-            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0)
+            if (audioManager == null) {
+                Log.e(TAG, "❌ AudioManager 为空")
+                return
+            }
 
+            // 保存当前媒体音量并调大
+            val originalVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            val targetVolume = (maxVolume * 0.6f).toInt().coerceAtLeast(1)
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0)
+            Log.d(TAG, "音量: 原始=$originalVolume, 目标=$targetVolume, 最大=$maxVolume")
+
+            // ===== 创建 AudioTrack =====
             val minBufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
             val bufferSize = if (minBufferSize > 0) maxOf(minBufferSize, pcmData.size * 2) else pcmData.size * 2
 
@@ -84,23 +89,31 @@ class VoicePromptPlayer(private val context: Context) {
             )
 
             if (audioTrack.state != AudioTrack.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioTrack 初始化失败")
-                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
+                Log.e(TAG, "❌ AudioTrack 初始化失败")
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
                 return
             }
 
-            audioTrack.write(pcmData, 0, pcmData.size)
+            Log.d(TAG, "✅ AudioTrack 初始化成功, bufferSize=$bufferSize")
+
+            // ===== 写入并播放 =====
+            val writeResult = audioTrack.write(pcmData, 0, pcmData.size)
+            Log.d(TAG, "写入结果: $writeResult / ${pcmData.size} 字节")
+
             audioTrack.play()
+            Log.d(TAG, "AudioTrack 开始播放")
+
             Thread.sleep(durationMs + 200L)
+
             audioTrack.stop()
             audioTrack.release()
 
-            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
 
-            Log.d(TAG, "✅ 语音播报完成: $text")
+            Log.d(TAG, "✅ 播放完成: $label")
 
         } catch (e: Exception) {
-            Log.e(TAG, "播放语音失败: ${e.message}", e)
+            Log.e(TAG, "❌ 播放失败: ${e.message}", e)
         }
     }
 }
