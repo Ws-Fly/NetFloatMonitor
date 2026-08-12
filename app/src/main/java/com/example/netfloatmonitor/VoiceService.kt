@@ -25,6 +25,7 @@ import java.net.NetworkInterface
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlin.math.abs
 
 class VoiceService : Service() {
 
@@ -73,10 +74,7 @@ class VoiceService : Service() {
     private val jitterBuffer = mutableListOf<ByteArray>()
     private val MAX_JITTER_BUFFER = 3
 
-    // ===== 本机 IP 列表 =====
     private val localIpAddresses = mutableListOf<String>()
-    
-    // ===== 当前使用的网卡 =====
     private var selectedNetworkInterface: NetworkInterface? = null
 
     private val roleReceiver = object : BroadcastReceiver() {
@@ -107,7 +105,6 @@ class VoiceService : Service() {
         Log.d(TAG, "VoiceService onCreate")
         createNotificationChannel()
         
-        // ===== 获取本机 IP 和网卡 =====
         collectNetworkInfo()
         
         promptPlayer = VoicePromptPlayer(this)
@@ -127,7 +124,6 @@ class VoiceService : Service() {
         )
     }
 
-    // ===== 获取网络信息 =====
     private fun collectNetworkInfo() {
         try {
             val networkInterfaces = NetworkInterface.getNetworkInterfaces()
@@ -139,7 +135,6 @@ class VoiceService : Service() {
                     val hostAddress = address.hostAddress ?: continue
                     if (!hostAddress.contains(":") && !hostAddress.startsWith("127.")) {
                         localIpAddresses.add(hostAddress)
-                        // 记录第一个非回环网卡
                         if (selectedNetworkInterface == null && ni.isUp) {
                             selectedNetworkInterface = ni
                             Log.d(TAG, "✅ 选中网卡: ${ni.displayName}, IP: $hostAddress")
@@ -193,12 +188,10 @@ class VoiceService : Service() {
         try {
             startForeground(NOTIFICATION_ID, createNotification())
 
-            // ===== 创建组播Socket并绑定到指定网卡 =====
             multicastSocket = MulticastSocket(multicastPort).apply {
                 reuseAddress = true
                 setTimeToLive(32)
                 
-                // ===== 关键修复：绑定到选中的网卡 =====
                 selectedNetworkInterface?.let { ni ->
                     try {
                         setNetworkInterface(ni)
@@ -345,9 +338,10 @@ class VoiceService : Service() {
             return
         }
 
-        val bufferSize = minBufferSize * 2
+        val bufferSize = minBufferSize * 4
+        
         audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
             sampleRate,
             CHANNEL_CONFIG,
             PCM_ENCODING,
@@ -355,9 +349,9 @@ class VoiceService : Service() {
         )
 
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e(TAG, "AudioRecord初始化失败，尝试使用DEFAULT音频源")
+            Log.e(TAG, "AudioRecord初始化失败，尝试使用MIC源")
             audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.DEFAULT,
+                MediaRecorder.AudioSource.MIC,
                 sampleRate,
                 CHANNEL_CONFIG,
                 PCM_ENCODING,
@@ -371,7 +365,7 @@ class VoiceService : Service() {
         }
         
         audioRecord?.startRecording()
-        Log.d(TAG, "AudioRecord已初始化: ${sampleRate}Hz")
+        Log.d(TAG, "AudioRecord已初始化: ${sampleRate}Hz, 缓冲区: $bufferSize")
     }
 
     private fun initAudioTrack() {
@@ -386,7 +380,7 @@ class VoiceService : Service() {
             return
         }
 
-        val bufferSize = minBufferSize * 4
+        val bufferSize = minBufferSize * 6
         
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -412,7 +406,7 @@ class VoiceService : Service() {
             audioTrack = null
         } else {
             audioTrack?.play()
-            Log.d(TAG, "AudioTrack已初始化: ${sampleRate}Hz")
+            Log.d(TAG, "AudioTrack已初始化: ${sampleRate}Hz, 缓冲区: $bufferSize")
         }
     }
 
@@ -530,7 +524,11 @@ class VoiceService : Service() {
                     val readSize = audioRecord.read(buffer, 0, pcmPacketSize)
                     if (readSize > 0) {
                         val pcmData = buffer.copyOf(readSize)
-                        val encodedData = audioCodec.encode(pcmData, sampleRate)
+                        
+                        // ===== 音频归一化处理（消除杂音） =====
+                        val normalizedData = normalizeAudio(pcmData)
+                        
+                        val encodedData = audioCodec.encode(normalizedData, sampleRate)
                         
                         if (encodedData != null && encodedData.isNotEmpty()) {
                             val packetData = ByteArray(HEADER_SIZE + encodedData.size)
@@ -568,7 +566,10 @@ class VoiceService : Service() {
                             
                             sendCount++
                             if (sendCount % 10 == 0) {
-                                Log.d(TAG, "📤 已发送组播包 #$packetSeq, 大小: ${packetData.size} 字节 -> ${multicastGroup?.hostAddress}:$multicastPort")
+                                val compressionRatio = if (audioCodec.getName() != "PCM") {
+                                    (1 - encodedData.size.toFloat() / pcmPacketSize) * 100
+                                } else 0f
+                                Log.d(TAG, "📤 已发送 $sendCount 包, 压缩率: ${"%.1f".format(compressionRatio)}%, 包大小: ${packetData.size} 字节")
                             }
                         }
                     }
@@ -583,6 +584,46 @@ class VoiceService : Service() {
                 }
             }
             Log.d(TAG, "📤 发送线程已退出，共发送 $sendCount 个包")
+        }
+    }
+
+    // ===== 音频归一化处理（消除杂音） =====
+    private fun normalizeAudio(pcmData: ByteArray): ByteArray {
+        if (pcmData.size < 2) return pcmData
+        
+        try {
+            val shorts = ShortArray(pcmData.size / 2)
+            for (i in shorts.indices) {
+                val low = pcmData[i * 2].toInt() and 0xFF
+                val high = pcmData[i * 2 + 1].toInt() and 0xFF
+                shorts[i] = ((high shl 8) or low).toShort()
+            }
+            
+            var maxAmplitude = 0
+            for (s in shorts) {
+                val amp = abs(s.toInt())
+                if (amp > maxAmplitude) maxAmplitude = amp
+            }
+            
+            if (maxAmplitude < 50) {
+                return pcmData
+            }
+            
+            val targetLevel = 0.7f
+            val scaleFactor = (targetLevel * 32767) / maxAmplitude
+            
+            val result = ByteArray(pcmData.size)
+            for (i in shorts.indices) {
+                var sample = (shorts[i].toFloat() * scaleFactor).toInt()
+                sample = sample.coerceIn(-32768, 32767)
+                result[i * 2] = (sample and 0xFF).toByte()
+                result[i * 2 + 1] = (sample shr 8 and 0xFF).toByte()
+            }
+            
+            return result
+        } catch (e: Exception) {
+            Log.e(TAG, "音频归一化失败: ${e.message}")
+            return pcmData
         }
     }
 
