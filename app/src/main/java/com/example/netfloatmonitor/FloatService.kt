@@ -24,15 +24,19 @@ class FloatService : Service() {
     private var packetsInLastSecond = 0
     private var currentHz = 0
     private var statusTimer: Timer? = null
-    
-    // ===== 新增：记录角色变化 =====
+
     private var lastRole: Int = 1
-    
+
+    // ===== 提示音播放器（直接使用，不依赖 VoiceService） =====
+    private lateinit var promptPlayer: VoicePromptPlayer
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
         logger = LogManager(this)
+        // ===== 初始化提示音播放器 =====
+        promptPlayer = VoicePromptPlayer(this)
         Log.d("FloatService", "Service onCreate 触发")
         createNotificationChannel()
         startForeground(1001, createNotification())
@@ -40,12 +44,12 @@ class FloatService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val port = intent?.getIntExtra("PORT", 16789) ?: 16789
-        
+
         totalPackets = 0
         currentHz = 0
         lastRole = 1
         logger.startNewSession()
-        
+
         showFloatWindow()
         startUdpReceive(port)
         startStatusTimer()
@@ -53,49 +57,72 @@ class FloatService : Service() {
         mainHandler.postDelayed({
             sendStatusBroadcast()
         }, 200)
-        
+
+        Log.d("FloatService", "✅ UDP 监控已启动, 端口: $port")
+
         return START_NOT_STICKY
     }
 
     private fun startUdpReceive(port: Int) {
         receiver?.stop()
-        
+        receiver = null
+
         receiver = UdpReceiver(port) { data ->
             try {
                 totalPackets++
                 packetsInLastSecond++
 
                 logger.save(data)
-                
+
                 mainHandler.post {
                     floatView?.updateJsonDynamic(data)
-                    
-                    // ===== 新增：检测 role 变化并广播 =====
+
+                    // ===== 检测 role 变化并直接播放提示音 =====
                     try {
                         val obj = org.json.JSONObject(data)
                         val currentRole = obj.optInt("role", 1)
                         if (currentRole != lastRole) {
                             lastRole = currentRole
+                            Log.d("FloatService", "🔄 role 变化: $lastRole")
+
+                            // ===== 直接播放提示音（不依赖 VoiceService） =====
+                            playRolePrompt(currentRole)
+
+                            // 广播给 VoiceService（如果它正在运行）
                             sendRoleChangeBroadcast(currentRole)
                         }
                     } catch (e: Exception) {
-                        // 解析失败忽略
+                        // 忽略
                     }
                 }
             } catch (e: Exception) {
-                Log.e("FloatService", "网络数据流分发路由异常", e)
+                Log.e("FloatService", "处理数据异常: ${e.message}")
             }
         }
         receiver?.start()
+        Log.d("FloatService", "✅ UdpReceiver 已启动, 端口: $port")
     }
 
-    // ===== 新增：发送角色变化广播 =====
+    // ===== 直接播放提示音 =====
+    private fun playRolePrompt(role: Int) {
+        try {
+            if (role == 0) {
+                Log.d("FloatService", "🔊 播放飞行员提示音")
+                promptPlayer.playPilotPrompt()
+            } else {
+                Log.d("FloatService", "🔊 播放观察者提示音")
+                promptPlayer.playObserverPrompt()
+            }
+        } catch (e: Exception) {
+            Log.e("FloatService", "播放提示音失败: ${e.message}")
+        }
+    }
+
     private fun sendRoleChangeBroadcast(role: Int) {
         val intent = Intent("com.example.netfloatmonitor.ROLE_CHANGE").apply {
             putExtra("ROLE", role)
         }
         LocalBroadcastManager.getInstance(this@FloatService).sendBroadcast(intent)
-        Log.d("FloatService", "角色变化广播: role=$role")
     }
 
     private fun startStatusTimer() {
@@ -122,7 +149,7 @@ class FloatService : Service() {
         if (floatView != null) return
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val params = WindowManager.LayoutParams()
-        
+
         params.width = WindowManager.LayoutParams.WRAP_CONTENT
         params.height = WindowManager.LayoutParams.WRAP_CONTENT
         params.type = if (Build.VERSION.SDK_INT >= 26) {
@@ -134,18 +161,19 @@ class FloatService : Service() {
         params.format = PixelFormat.TRANSLUCENT
         params.x = 50
         params.y = 200
-        
+
         floatView = FloatView(this, wm, params)
         wm.addView(floatView, params)
+        Log.d("FloatService", "✅ 悬浮窗已显示")
     }
 
     override fun onDestroy() {
         super.onDestroy()
         statusTimer?.cancel()
         statusTimer = null
-        
+
         logger.stopSession()
-        
+
         val intent = Intent("com.example.netfloatmonitor.STATUS_UPDATE").apply {
             putExtra("IS_STOPPED", true)
         }
@@ -153,7 +181,7 @@ class FloatService : Service() {
 
         receiver?.stop()
         receiver = null
-        
+
         if (floatView != null) {
             try {
                 val wm = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -164,6 +192,7 @@ class FloatService : Service() {
             floatView = null
         }
         mainHandler.removeCallbacksAndMessages(null)
+        Log.d("FloatService", "Service 已销毁")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -171,8 +200,8 @@ class FloatService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             val channel = NotificationChannel(
-                "net_monitor", 
-                "NetFloat Monitor", 
+                "net_monitor",
+                "NetFloat Monitor",
                 NotificationManager.IMPORTANCE_LOW
             )
             val manager = getSystemService(NotificationManager::class.java)
@@ -186,5 +215,5 @@ class FloatService : Service() {
             .setContentText("UDP监听运行中")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
-        }
+    }
 }
