@@ -48,6 +48,6 @@ dependencies {
     implementation 'com.google.android.material:material:1.12.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     
-    // ===== WebRTC (包含 Opus 编解码器) =====
-    implementation 'org.webrtc:google-webrtc:1.0.32006'
+    // ===== 纯 Java Opus 编解码器（无需原生库） =====
+    implementation 'com.github.lostplayer:concentus:1.0.0'
 }
