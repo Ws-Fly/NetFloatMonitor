@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -62,26 +63,17 @@ class VoiceSettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val rootLayout = createLayout()
-        setContentView(rootLayout)
-
-        initViews(rootLayout)
-        loadConfig()
-        registerReceivers()
-        setupListeners()
-        updateUI()
-        checkRecordPermission()
-    }
-
-    private fun createLayout(): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
+        // ===== 使用 ScrollView 包裹，防止内容过多 =====
+        val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor("#1A1A2E"))
         }
-    }
 
-    private fun initViews(rootLayout: LinearLayout) {
+        val rootLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 32, 32, 32)
+        }
+
+        // ===== 标题 =====
         val titleView = TextView(this).apply {
             text = "🎤 语音对讲"
             textSize = 22f
@@ -90,6 +82,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(titleView)
 
+        // ===== 组播地址 =====
         val ipLabel = TextView(this).apply {
             text = "组播地址"
             textSize = 15f
@@ -106,6 +99,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(etMulticastIp)
 
+        // ===== 组播端口 =====
         val portLabel = TextView(this).apply {
             text = "组播端口"
             textSize = 15f
@@ -123,18 +117,17 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(etMulticastPort)
 
-        // 分隔线
-        val divider = View(this).apply {
-            setBackgroundColor(Color.parseColor("#333333"))
-            val params = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 1
-            )
-            params.setMargins(0, 24, 0, 24)
-            layoutParams = params
-        }
+        // ===== 分隔线 1 =====
+        val divider = View(this)
+        divider.setBackgroundColor(Color.parseColor("#333333"))
+        val dividerParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 1
+        )
+        dividerParams.setMargins(0, 24, 0, 24)
+        divider.layoutParams = dividerParams
         rootLayout.addView(divider)
 
-        // 对讲功能总开关
+        // ===== 对讲功能总开关 =====
         val switchLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 0, 0, 0)
@@ -163,17 +156,17 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(switchHint)
 
-        // 分隔线
-        val divider2 = View(this).apply {
-            setBackgroundColor(Color.parseColor("#333333"))
-            val params = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 1
-            )
-            params.setMargins(0, 24, 0, 24)
-            layoutParams = params
-        }
+        // ===== 分隔线 2 =====
+        val divider2 = View(this)
+        divider2.setBackgroundColor(Color.parseColor("#333333"))
+        val dividerParams2 = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 1
+        )
+        dividerParams2.setMargins(0, 24, 0, 24)
+        divider2.layoutParams = dividerParams2
         rootLayout.addView(divider2)
 
+        // ===== 状态显示 =====
         val statusLabel = TextView(this).apply {
             text = "📊 实时状态"
             textSize = 16f
@@ -197,6 +190,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(tvVoiceRole)
 
+        // ===== 提示信息 =====
         val hint1 = TextView(this).apply {
             text = "💡 role=0 飞行员模式（可讲话）"
             textSize = 13f
@@ -213,6 +207,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(hint2)
 
+        // ===== 返回按钮 =====
         val backBtn = Button(this).apply {
             text = "← 返回"
             textSize = 15f
@@ -222,6 +217,15 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         backBtn.setOnClickListener { finish() }
         rootLayout.addView(backBtn)
+
+        scrollView.addView(rootLayout)
+        setContentView(scrollView)
+
+        loadConfig()
+        registerReceivers()
+        setupListeners()
+        updateUI()
+        checkRecordPermission()
     }
 
     private fun loadConfig() {
