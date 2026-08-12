@@ -1,43 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- ===== 网络权限 ===== -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
-    
-    <!-- ===== 悬浮窗权限 ===== -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    
-    <!-- ===== 后台服务 ===== -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    
-    <!-- ===== 存储 ===== -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    
-    <!-- ===== 音频权限 ===== -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    
-    <!-- ===== Android 13+ 通知权限 ===== -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    
-    <!-- ===== 蓝牙 ===== -->
-    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" android:minSdkVersion="31" />
 
     <application
         android:allowBackup="true"
         android:label="NetFloatMonitor"
         android:theme="@style/AppTheme"
-        android:usesCleartextTraffic="true"
-        tools:targetApi="31">
+        android:usesCleartextTraffic="true">
 
-        <!-- ===== 主界面 ===== -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -47,25 +26,15 @@
             </intent-filter>
         </activity>
 
-        <!-- ===== 语音对讲设置页面 ===== -->
-        <activity
-            android:name=".VoiceSettingsActivity"
-            android:exported="false"
-            android:parentActivityName=".MainActivity"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
-
-        <!-- ===== 悬浮窗服务 ===== -->
         <service
             android:name=".FloatService"
             android:foregroundServiceType="specialUse"
             android:exported="false" />
 
-        <!-- ===== 语音服务 ===== -->
         <service
             android:name=".VoiceService"
-            android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync|microphone" />
+            android:foregroundServiceType="dataSync" />
 
     </application>
 
