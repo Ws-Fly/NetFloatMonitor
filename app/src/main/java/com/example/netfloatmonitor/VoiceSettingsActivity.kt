@@ -88,7 +88,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             setPadding(32, 32, 32, 32)
         }
 
-        // 标题
         val titleView = TextView(this).apply {
             text = "🎤 语音对讲设置"
             textSize = 24f
@@ -123,7 +122,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(etMulticastPort)
 
-        // 编解码格式（下拉选择）
+        // 编解码格式（下拉选择）- 更新为 PCM / G.711 / ADPCM
         val codecLabel = TextView(this).apply {
             text = "编解码格式"
             textSize = 16f
@@ -132,7 +131,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
         rootLayout.addView(codecLabel)
 
         spinnerCodec = Spinner(this).apply {
-            val codecOptions = arrayOf("PCM", "G.711", "Opus")
+            val codecOptions = arrayOf("PCM", "G.711", "ADPCM")
             val adapter = ArrayAdapter(
                 this@VoiceSettingsActivity,
                 android.R.layout.simple_spinner_dropdown_item,
@@ -264,7 +263,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(testPromptBtn)
 
-        // 测试观察者提示音按钮
         val testObserverPromptBtn = Button(this).apply {
             text = "🔊 测试提示音 (观察者)"
             textSize = 16f
@@ -302,7 +300,15 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(hint2)
 
-        // 返回按钮
+        // 压缩比说明
+        val hint3 = TextView(this).apply {
+            text = "📊 压缩比: PCM=1x, G.711=2x, ADPCM=4x"
+            textSize = 12f
+            textColor = 0xFF888888.toInt()
+            setPadding(0, 16, 0, 0)
+        }
+        rootLayout.addView(hint3)
+
         val backBtn = Button(this).apply {
             text = "← 返回"
             textSize = 16f
