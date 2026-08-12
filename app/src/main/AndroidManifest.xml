@@ -53,12 +53,6 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
 
-        <!-- ===== 音频测试工具页面 ===== -->
-        <activity
-            android:name=".AudioTestActivity"
-            android:exported="false"
-            android:parentActivityName=".MainActivity" />
-
         <!-- ===== 悬浮窗服务 ===== -->
         <service
             android:name=".FloatService"
