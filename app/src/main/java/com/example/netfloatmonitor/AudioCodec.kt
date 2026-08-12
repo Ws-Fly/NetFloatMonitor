@@ -15,7 +15,7 @@ class PcmCodec : AudioCodec {
     override fun getName(): String = "PCM"
 }
 
-// ===== G.711 μ-law 压缩（2:1 压缩比） =====
+// ===== G.711 μ-law 压缩（2:1） =====
 class G711Codec : AudioCodec {
     
     companion object {
@@ -24,9 +24,7 @@ class G711Codec : AudioCodec {
     
     override fun encode(pcmData: ByteArray, sampleRate: Int): ByteArray? {
         try {
-            if (pcmData.size % 2 != 0) {
-                return null
-            }
+            if (pcmData.size % 2 != 0) return null
             
             val encodedSize = pcmData.size / 2
             val encoded = ByteArray(encodedSize)
@@ -79,30 +77,15 @@ class G711Codec : AudioCodec {
             sign = 0x80
         }
         
-        if (absSample < 0x100) {
-            exponent = 0
-            mantissa = (absSample shr 4) and 0x0F
-        } else if (absSample < 0x200) {
-            exponent = 1
-            mantissa = (absSample shr 5) and 0x0F
-        } else if (absSample < 0x400) {
-            exponent = 2
-            mantissa = (absSample shr 6) and 0x0F
-        } else if (absSample < 0x800) {
-            exponent = 3
-            mantissa = (absSample shr 7) and 0x0F
-        } else if (absSample < 0x1000) {
-            exponent = 4
-            mantissa = (absSample shr 8) and 0x0F
-        } else if (absSample < 0x2000) {
-            exponent = 5
-            mantissa = (absSample shr 9) and 0x0F
-        } else if (absSample < 0x4000) {
-            exponent = 6
-            mantissa = (absSample shr 10) and 0x0F
-        } else {
-            exponent = 7
-            mantissa = (absSample shr 11) and 0x0F
+        when {
+            absSample < 0x100 -> { exponent = 0; mantissa = (absSample shr 4) and 0x0F }
+            absSample < 0x200 -> { exponent = 1; mantissa = (absSample shr 5) and 0x0F }
+            absSample < 0x400 -> { exponent = 2; mantissa = (absSample shr 6) and 0x0F }
+            absSample < 0x800 -> { exponent = 3; mantissa = (absSample shr 7) and 0x0F }
+            absSample < 0x1000 -> { exponent = 4; mantissa = (absSample shr 8) and 0x0F }
+            absSample < 0x2000 -> { exponent = 5; mantissa = (absSample shr 9) and 0x0F }
+            absSample < 0x4000 -> { exponent = 6; mantissa = (absSample shr 10) and 0x0F }
+            else -> { exponent = 7; mantissa = (absSample shr 11) and 0x0F }
         }
         
         return (sign or (exponent shl 4) or mantissa).toByte()
@@ -130,27 +113,22 @@ class G711Codec : AudioCodec {
     }
 }
 
-// ===== ADPCM 压缩（4:1 压缩比，音质优于 G.711） =====
+// ===== ADPCM 压缩（4:1，音质优于 G.711） =====
 class AdpcmCodec : AudioCodec {
     
     companion object {
         private const val TAG = "AdpcmCodec"
         
-        // ADPCM 量化表
         private val INDEX_TABLE = intArrayOf(
             -1, -1, -1, -1, 2, 4, 6, 8,
             -1, -1, -1, -1, 2, 4, 6, 8
         )
         
         private val STEP_TABLE = intArrayOf(
-            7, 8, 9, 10, 11, 12, 13, 14,
-            16, 17, 19, 21, 23, 25, 28, 31,
-            34, 37, 41, 45, 50, 55, 60, 66,
-            73, 80, 88, 97, 107, 118, 130, 143,
-            157, 173, 190, 209, 230, 253, 279, 307,
-            337, 371, 408, 449, 494, 544, 598, 658,
-            724, 796, 876, 963, 1060, 1166, 1282, 1411,
-            1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024
+            7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31,
+            34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143,
+            157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658,
+            724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024
         )
     }
     
@@ -159,13 +137,12 @@ class AdpcmCodec : AudioCodec {
             if (pcmData.size < 2) return null
             
             val sampleCount = pcmData.size / 2
-            val encodedSize = (sampleCount + 1) / 2  // 每个采样点 4bit
-            val encoded = ByteArray(encodedSize + 2)  // +2 保存初始状态
+            val encodedSize = (sampleCount + 1) / 2 + 2
+            val encoded = ByteArray(encodedSize)
             
             var predSample = 0
             var predIndex = 0
             
-            // 保存初始状态
             encoded[0] = (predSample shr 8 and 0xFF).toByte()
             encoded[1] = (predSample and 0xFF).toByte()
             
@@ -179,14 +156,11 @@ class AdpcmCodec : AudioCodec {
                 val sample = if (high >= 0x80) (high shl 8) or low - 0x10000 else (high shl 8) or low
                 
                 val diff = sample - predSample
-                var step = STEP_TABLE[predIndex.coerceIn(0, STEP_TABLE.size - 1)]
+                val step = STEP_TABLE[predIndex.coerceIn(0, STEP_TABLE.size - 1)]
                 
                 var sign = 0
                 var absDiff = diff
-                if (diff < 0) {
-                    sign = 8
-                    absDiff = -diff
-                }
+                if (diff < 0) { sign = 8; absDiff = -diff }
                 
                 var code = sign
                 var diffStep = step
@@ -198,7 +172,6 @@ class AdpcmCodec : AudioCodec {
                     diffStep = diffStep shr 1
                 }
                 
-                // 更新预测值
                 var diffNew = 0
                 diffStep = step
                 for (j in 3 downTo 0) {
@@ -207,16 +180,13 @@ class AdpcmCodec : AudioCodec {
                     }
                     diffStep = diffStep shr 1
                 }
-                if ((code and 8) != 0) {
-                    diffNew = -diffNew
-                }
+                if ((code and 8) != 0) diffNew = -diffNew
                 predSample += diffNew
                 predSample = predSample.coerceIn(-32768, 32767)
                 
                 predIndex += INDEX_TABLE[code and 0x0F]
                 predIndex = predIndex.coerceIn(0, STEP_TABLE.size - 1)
                 
-                // 写入 4bit
                 if (bitPos == 0) {
                     currentByte = (code and 0x0F) shl 4
                     bitPos = 4
@@ -228,15 +198,11 @@ class AdpcmCodec : AudioCodec {
                 }
             }
             
-            // 处理最后一个半字节
             if (bitPos > 0) {
                 encoded[byteIndex] = currentByte.toByte()
             }
             
-            // 裁剪到实际大小
-            val resultSize = if (bitPos > 0) byteIndex + 1 else byteIndex
-            return encoded.copyOf(resultSize)
-            
+            return encoded
         } catch (e: Exception) {
             Log.e(TAG, "ADPCM编码失败: ${e.message}")
             return null
@@ -247,7 +213,6 @@ class AdpcmCodec : AudioCodec {
         try {
             if (encodedData.size < 3) return null
             
-            // 恢复初始状态
             var predSample = ((encodedData[0].toInt() and 0xFF) shl 8) or (encodedData[1].toInt() and 0xFF)
             if (predSample >= 0x8000) predSample -= 0x10000
             var predIndex = 0
@@ -284,9 +249,7 @@ class AdpcmCodec : AudioCodec {
                     }
                     diffStep = diffStep shr 1
                 }
-                if ((code and 8) != 0) {
-                    diffNew = -diffNew
-                }
+                if ((code and 8) != 0) diffNew = -diffNew
                 predSample += diffNew
                 predSample = predSample.coerceIn(-32768, 32767)
                 
@@ -300,7 +263,6 @@ class AdpcmCodec : AudioCodec {
             }
             
             return pcmData.copyOf(sampleCount * 2)
-            
         } catch (e: Exception) {
             Log.e(TAG, "ADPCM解码失败: ${e.message}")
             return null
