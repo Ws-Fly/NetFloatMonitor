@@ -26,6 +26,12 @@
             </intent-filter>
         </activity>
 
+        <!-- ===== 语音对讲设置页面 ===== -->
+        <activity
+            android:name=".VoiceSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
         <service
             android:name=".FloatService"
             android:foregroundServiceType="specialUse"
