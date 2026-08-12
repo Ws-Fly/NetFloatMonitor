@@ -22,6 +22,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var logPath: TextView
     private lateinit var tvStatusInfo: TextView
     private lateinit var logManager: LogManager
+    private lateinit var btnVoiceSettings: Button
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -54,6 +55,7 @@ class MainActivity : AppCompatActivity() {
         portEdit = findViewById(R.id.editPort)
         logPath = findViewById(R.id.logPath)
         tvStatusInfo = findViewById(R.id.tvStatusInfo)
+        btnVoiceSettings = findViewById(R.id.btnVoiceSettings)
 
         val startBtn = findViewById<Button>(R.id.startBtn)
         val stopBtn = findViewById<Button>(R.id.stopBtn)
@@ -125,6 +127,16 @@ class MainActivity : AppCompatActivity() {
 
         clearBtn.setOnClickListener {
             clearLog()
+        }
+
+        // ===== 语音对讲入口 =====
+        btnVoiceSettings.setOnClickListener {
+            try {
+                val intent = Intent(this, VoiceSettingsActivity::class.java)
+                startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this, "打开语音设置失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
