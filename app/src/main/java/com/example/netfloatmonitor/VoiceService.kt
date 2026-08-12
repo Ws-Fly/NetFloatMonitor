@@ -40,7 +40,7 @@ class VoiceService : Service() {
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         
         private const val PCM_FRAME_SIZE = 320
-        private const val BATCH_COUNT = 2  // ===== 从 3 改为 2，降低延时（约40ms） =====
+        private const val BATCH_COUNT = 2
     }
 
     private val isRunning = AtomicBoolean(false)
@@ -63,7 +63,6 @@ class VoiceService : Service() {
     private var promptEnabled: Boolean = true
     private var packetSeq: Int = 0
     
-    private lateinit var promptPlayer: VoicePromptPlayer
     private lateinit var audioDeviceManager: AudioDeviceManager
     
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -82,6 +81,7 @@ class VoiceService : Service() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "com.example.netfloatmonitor.ROLE_CHANGE") {
                 val role = intent.getIntExtra("ROLE", 1)
+                Log.d(TAG, "📨 收到 role 广播: $role")
                 handleRoleChange(role)
             }
         }
@@ -95,7 +95,6 @@ class VoiceService : Service() {
         collectNetworkInfo()
         acquireMulticastLock()
         
-        promptPlayer = VoicePromptPlayer(this)
         audioDeviceManager = AudioDeviceManager(this)
         audioDeviceManager.setDeviceChangeListener { device ->
             Log.d(TAG, "音频设备切换: $device")
@@ -106,6 +105,7 @@ class VoiceService : Service() {
             roleReceiver,
             IntentFilter("com.example.netfloatmonitor.ROLE_CHANGE")
         )
+        Log.d(TAG, "✅ roleReceiver 已注册")
     }
 
     private fun collectNetworkInfo() {
@@ -337,12 +337,10 @@ class VoiceService : Service() {
         }
     }
 
-    // ===== 发送线程 - BATCH_COUNT 改为 2，降低延时 =====
     private fun startSendThread() {
         sendThread?.interrupt()
         sendThread = thread(name = "VoiceSendThread") {
             val pcmBuffer = ByteArray(PCM_FRAME_SIZE)
-            // ===== 使用 BATCH_COUNT=2，每批 2 帧，延时约 40ms =====
             val compressedBatchBuf = ByteArray((PCM_FRAME_SIZE / 2) * BATCH_COUNT)
             var batchIndexLocal = 0
             var sendCount = 0
@@ -455,10 +453,14 @@ class VoiceService : Service() {
         }
     }
 
+    // ===== 角色切换 - 只切换模式，不播放提示音 =====
     private fun handleRoleChange(role: Int) {
         val newIsPilot = role == 0
+        Log.d(TAG, "🔄 handleRoleChange: role=$role, newIsPilot=$newIsPilot, currentIsPilot=${isPilotMode.get()}")
+        
         if (newIsPilot != isPilotMode.get()) {
             isPilotMode.set(newIsPilot)
+            
             if (newIsPilot) {
                 isMuted.set(false)
                 startSendThread()
@@ -472,6 +474,8 @@ class VoiceService : Service() {
                 updateNotification()
                 Log.d(TAG, "✅ 切换到观察者模式")
             }
+        } else {
+            Log.d(TAG, "⚠️ role 未变化，跳过处理")
         }
     }
 
