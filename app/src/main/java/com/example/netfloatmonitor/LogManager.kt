@@ -11,10 +11,34 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class LogManager(private val context: Context) {
 
-    private val logDir = File(context.getExternalFilesDir(null), "NetFloatLogs").apply {
-        if (!exists()) {
-            mkdirs()
+    private val logDir: File
+
+    init {
+        // ===== 关键修复：安全创建目录，防止 getExternalFilesDir 返回 null =====
+        val externalDir = context.getExternalFilesDir(null)
+        logDir = if (externalDir != null) {
+            File(externalDir, "NetFloatLogs").apply {
+                if (!exists()) {
+                    try {
+                        mkdirs()
+                    } catch (e: Exception) {
+                        Log.e("LogManager", "创建日志目录失败: ${e.message}")
+                    }
+                }
+            }
+        } else {
+            // 降级方案：使用内部存储
+            File(context.filesDir, "NetFloatLogs").apply {
+                if (!exists()) {
+                    try {
+                        mkdirs()
+                    } catch (e: Exception) {
+                        Log.e("LogManager", "创建内部日志目录失败: ${e.message}")
+                    }
+                }
+            }
         }
+        Log.d("LogManager", "日志目录: ${logDir.absolutePath}")
     }
 
     private val isRecording = AtomicBoolean(false)
@@ -37,7 +61,11 @@ class LogManager(private val context: Context) {
     fun getLogPath(): String = logDir.absolutePath
 
     fun getLogFiles(): List<File> {
-        return logDir.listFiles()?.filter { it.isFile && it.name.endsWith(".csv") }?.toList() ?: emptyList()
+        return try {
+            logDir.listFiles()?.filter { it.isFile && it.name.endsWith(".csv") }?.toList() ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     fun getCurrentFileName(): String {
