@@ -51,7 +51,8 @@
         <activity
             android:name=".VoiceSettingsActivity"
             android:exported="false"
-            android:parentActivityName=".MainActivity" />
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
 
         <!-- ===== 悬浮窗服务 ===== -->
         <service
