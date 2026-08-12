@@ -10,7 +10,6 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -44,6 +43,8 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 "com.example.netfloatmonitor.VOICE_STATUS" -> {
                     isVoiceRunning = intent.getBooleanExtra("RUNNING", false)
                     currentRole = intent.getIntExtra("ROLE", 1)
+                    // ===== 修复：同步开关状态 =====
+                    switchVoice.isChecked = isVoiceRunning
                     updateUI()
                 }
                 "com.example.netfloatmonitor.VOICE_ROLE_CHANGE" -> {
@@ -63,7 +64,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ===== 使用 ScrollView 包裹，防止内容过多 =====
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor("#1A1A2E"))
         }
@@ -347,6 +347,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 startService(intent)
             }
             isVoiceRunning = true
+            // ===== 修复：开关状态由广播同步，不在此处设置 =====
             updateUI()
             Toast.makeText(this, "🎧 语音对讲已开启", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
@@ -362,6 +363,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
             }
             startService(intent)
             isVoiceRunning = false
+            // ===== 修复：开关状态由广播同步 =====
             updateUI()
             Toast.makeText(this, "⏹ 语音对讲已关闭", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
