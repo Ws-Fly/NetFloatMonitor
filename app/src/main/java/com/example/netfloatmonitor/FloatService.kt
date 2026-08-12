@@ -26,8 +26,8 @@ class FloatService : Service() {
     private var statusTimer: Timer? = null
 
     private var lastRole: Int = 1
+    private var lastPlayedRole: Int = -1  // ===== 记录上次播报的角色，避免重复播报 =====
 
-    // ===== 提示音播放器（直接使用，不依赖 VoiceService） =====
     private lateinit var promptPlayer: VoicePromptPlayer
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -35,7 +35,6 @@ class FloatService : Service() {
     override fun onCreate() {
         super.onCreate()
         logger = LogManager(this)
-        // ===== 初始化提示音播放器 =====
         promptPlayer = VoicePromptPlayer(this)
         Log.d("FloatService", "Service onCreate 触发")
         createNotificationChannel()
@@ -48,6 +47,7 @@ class FloatService : Service() {
         totalPackets = 0
         currentHz = 0
         lastRole = 1
+        lastPlayedRole = -1
         logger.startNewSession()
 
         showFloatWindow()
@@ -74,21 +74,27 @@ class FloatService : Service() {
 
                 logger.save(data)
 
+                // ===== 直接在主线程处理，减少延时 =====
                 mainHandler.post {
+                    // 更新悬浮窗
                     floatView?.updateJsonDynamic(data)
 
-                    // ===== 检测 role 变化并直接播放提示音 =====
+                    // ===== 检测 role 变化并播报 =====
                     try {
                         val obj = org.json.JSONObject(data)
                         val currentRole = obj.optInt("role", 1)
+
                         if (currentRole != lastRole) {
                             lastRole = currentRole
                             Log.d("FloatService", "🔄 role 变化: $lastRole")
 
-                            // ===== 直接播放提示音（不依赖 VoiceService） =====
-                            playRolePrompt(currentRole)
+                            // ===== 播报语音（只有在角色真正变化时播报） =====
+                            if (currentRole != lastPlayedRole) {
+                                lastPlayedRole = currentRole
+                                playRolePrompt(currentRole)
+                            }
 
-                            // 广播给 VoiceService（如果它正在运行）
+                            // 广播给 VoiceService
                             sendRoleChangeBroadcast(currentRole)
                         }
                     } catch (e: Exception) {
@@ -103,18 +109,18 @@ class FloatService : Service() {
         Log.d("FloatService", "✅ UdpReceiver 已启动, 端口: $port")
     }
 
-    // ===== 直接播放提示音 =====
+    // ===== 播报语音 =====
     private fun playRolePrompt(role: Int) {
         try {
             if (role == 0) {
-                Log.d("FloatService", "🔊 播放飞行员提示音")
+                Log.d("FloatService", "🔊 播报: 飞行员模式")
                 promptPlayer.playPilotPrompt()
             } else {
-                Log.d("FloatService", "🔊 播放观察者提示音")
+                Log.d("FloatService", "🔊 播报: 观察者模式")
                 promptPlayer.playObserverPrompt()
             }
         } catch (e: Exception) {
-            Log.e("FloatService", "播放提示音失败: ${e.message}")
+            Log.e("FloatService", "播报失败: ${e.message}")
         }
     }
 
