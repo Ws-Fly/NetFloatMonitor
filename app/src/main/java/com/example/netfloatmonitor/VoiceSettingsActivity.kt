@@ -8,10 +8,12 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -24,8 +26,8 @@ class VoiceSettingsActivity : AppCompatActivity() {
 
     private lateinit var etMulticastIp: EditText
     private lateinit var etMulticastPort: EditText
-    private lateinit var etCodec: EditText
-    private lateinit var etSampleRate: EditText
+    private lateinit var spinnerCodec: Spinner
+    private lateinit var spinnerSampleRate: Spinner
     private lateinit var switchPrompt: Switch
     private lateinit var btnVoiceStart: Button
     private lateinit var btnVoiceStop: Button
@@ -70,7 +72,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // ===== 使用代码动态创建布局，避免 XML 问题 =====
         setupUI()
         
         loadConfig()
@@ -122,33 +123,45 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(etMulticastPort)
 
-        // 编解码格式
+        // 编解码格式（下拉选择）
         val codecLabel = TextView(this).apply {
-            text = "编解码格式 (PCM/G.711/Opus)"
+            text = "编解码格式"
             textSize = 16f
             setPadding(0, 24, 0, 0)
         }
         rootLayout.addView(codecLabel)
 
-        etCodec = EditText(this).apply {
-            setText("PCM")
+        spinnerCodec = Spinner(this).apply {
+            val codecOptions = arrayOf("PCM", "G.711", "Opus")
+            val adapter = ArrayAdapter(
+                this@VoiceSettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                codecOptions
+            )
+            this.adapter = adapter
             setPadding(16, 16, 16, 16)
         }
-        rootLayout.addView(etCodec)
+        rootLayout.addView(spinnerCodec)
 
-        // 采样率
+        // 采样率（下拉选择）
         val sampleLabel = TextView(this).apply {
-            text = "采样率 (8kHz/16kHz)"
+            text = "采样率"
             textSize = 16f
             setPadding(0, 24, 0, 0)
         }
         rootLayout.addView(sampleLabel)
 
-        etSampleRate = EditText(this).apply {
-            setText("8kHz")
+        spinnerSampleRate = Spinner(this).apply {
+            val sampleOptions = arrayOf("8kHz", "16kHz")
+            val adapter = ArrayAdapter(
+                this@VoiceSettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                sampleOptions
+            )
+            this.adapter = adapter
             setPadding(16, 16, 16, 16)
         }
-        rootLayout.addView(etSampleRate)
+        rootLayout.addView(spinnerSampleRate)
 
         // 提示音开关
         val switchLayout = LinearLayout(this).apply {
@@ -188,7 +201,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(tvVoiceRole)
 
-        // 按钮区域
+        // 操作按钮区域
         val btnLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 32, 0, 0)
@@ -227,6 +240,54 @@ class VoiceSettingsActivity : AppCompatActivity() {
         }
         rootLayout.addView(btnPtt)
 
+        // 测试提示音按钮
+        val testPromptBtn = Button(this).apply {
+            text = "🔊 测试提示音 (飞行员)"
+            textSize = 16f
+            setPadding(0, 24, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 16, 0, 0)
+            }
+        }
+        testPromptBtn.setOnClickListener {
+            try {
+                val player = VoicePromptPlayer(this@VoiceSettingsActivity)
+                player.playPilotPrompt()
+                Toast.makeText(this@VoiceSettingsActivity, "🔊 播放提示音 (飞行员)", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@VoiceSettingsActivity, "播放失败: ${e.message}", Toast.LENGTH_LONG).show()
+                e.printStackTrace()
+            }
+        }
+        rootLayout.addView(testPromptBtn)
+
+        // 测试观察者提示音按钮
+        val testObserverPromptBtn = Button(this).apply {
+            text = "🔊 测试提示音 (观察者)"
+            textSize = 16f
+            setPadding(0, 24, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 8, 0, 0)
+            }
+        }
+        testObserverPromptBtn.setOnClickListener {
+            try {
+                val player = VoicePromptPlayer(this@VoiceSettingsActivity)
+                player.playObserverPrompt()
+                Toast.makeText(this@VoiceSettingsActivity, "🔊 播放提示音 (观察者)", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@VoiceSettingsActivity, "播放失败: ${e.message}", Toast.LENGTH_LONG).show()
+                e.printStackTrace()
+            }
+        }
+        rootLayout.addView(testObserverPromptBtn)
+
         // 提示信息
         val hint1 = TextView(this).apply {
             text = "💡 role=0 飞行员模式（可讲话）"
@@ -250,7 +311,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
         backBtn.setOnClickListener { finish() }
         rootLayout.addView(backBtn)
 
-        // 将根布局放入 ScrollView
         val scrollView = ScrollView(this).apply {
             addView(rootLayout)
         }
@@ -262,8 +322,13 @@ class VoiceSettingsActivity : AppCompatActivity() {
             val sp = getSharedPreferences("voice_config", Context.MODE_PRIVATE)
             etMulticastIp.setText(sp.getString("multicast_ip", "224.0.0.1"))
             etMulticastPort.setText(sp.getString("multicast_port", "50000"))
-            etCodec.setText(sp.getString("codec", "PCM"))
-            etSampleRate.setText(sp.getString("sample_rate", "8kHz"))
+            
+            val codecPos = sp.getInt("codec_pos", 0)
+            spinnerCodec.setSelection(codecPos)
+            
+            val samplePos = sp.getInt("sample_pos", 0)
+            spinnerSampleRate.setSelection(samplePos)
+            
             switchPrompt.isChecked = sp.getBoolean("prompt_enabled", true)
         } catch (e: Exception) {
             // 使用默认值
@@ -276,8 +341,10 @@ class VoiceSettingsActivity : AppCompatActivity() {
             sp.edit().apply {
                 putString("multicast_ip", etMulticastIp.text.toString())
                 putString("multicast_port", etMulticastPort.text.toString())
-                putString("codec", etCodec.text.toString())
-                putString("sample_rate", etSampleRate.text.toString())
+                putString("codec", spinnerCodec.selectedItem.toString())
+                putInt("codec_pos", spinnerCodec.selectedItemPosition)
+                putString("sample_rate", spinnerSampleRate.selectedItem.toString())
+                putInt("sample_pos", spinnerSampleRate.selectedItemPosition)
                 putBoolean("prompt_enabled", switchPrompt.isChecked)
                 apply()
             }
@@ -364,8 +431,8 @@ class VoiceSettingsActivity : AppCompatActivity() {
     private fun startVoiceService() {
         val ip = etMulticastIp.text.toString().trim()
         val portStr = etMulticastPort.text.toString().trim()
-        val codec = etCodec.text.toString()
-        val sampleRate = etSampleRate.text.toString()
+        val codec = spinnerCodec.selectedItem.toString()
+        val sampleRate = spinnerSampleRate.selectedItem.toString()
         val promptEnabled = switchPrompt.isChecked
 
         if (ip.isEmpty() || portStr.isEmpty()) {
