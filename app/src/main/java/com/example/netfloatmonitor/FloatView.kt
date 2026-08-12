@@ -176,7 +176,7 @@ class FloatView(
         topBar.gravity = Gravity.END or Gravity.CENTER_VERTICAL
         topBar.setPadding(0, 0, 4, 6)
         
-        // ===== 新增：在 topBar 左侧添加 role 状态显示 =====
+        // ===== 在 topBar 左侧添加 role 状态显示 =====
         val roleLp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         roleLp.gravity = Gravity.START or Gravity.CENTER_VERTICAL
         topBar.addView(roleStatusView, roleLp)
@@ -410,7 +410,7 @@ class FloatView(
             try {
                 val obj = JSONObject(rawJson)
                 
-                // ===== 新增：解析 role 并更新显示 =====
+                // ===== 解析 role 并更新显示 =====
                 val role = obj.optInt("role", 1)
                 roleStatusView.apply {
                     val isPilot = role == 0
