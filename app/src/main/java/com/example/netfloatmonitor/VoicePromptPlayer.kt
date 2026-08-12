@@ -1,8 +1,6 @@
 package com.example.netfloatmonitor
 
 import android.content.Context
-import android.media.AudioAttributes
-import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.util.Log
@@ -13,82 +11,58 @@ class VoicePromptPlayer(private val context: Context) {
 
     companion object {
         private const val TAG = "VoicePromptPlayer"
-        private const val SAMPLE_RATE = 16000
+        private const val SAMPLE_RATE = 8000
+        private const val CHANNEL_OUT = AudioFormat.CHANNEL_OUT_MONO
+        private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     }
 
     fun playPilotPrompt() {
-        playTone(180f)
+        playTone(440f, 300)
     }
 
     fun playObserverPrompt() {
-        playTone(220f)
+        playTone(660f, 300)
     }
 
-    private fun playTone(baseFreq: Float) {
+    private fun playTone(freq: Float, durationMs: Int) {
         try {
-            val duration = 0.6f
-            val numSamples = (SAMPLE_RATE * duration).toInt()
-            val audioData = FloatArray(numSamples)
+            val numSamples = SAMPLE_RATE * durationMs / 1000
+            val pcmData = ByteArray(numSamples * 2)
 
             for (i in 0 until numSamples) {
-                val t = i.toFloat() / SAMPLE_RATE.toFloat()
-                var sample = 0f
-                for (h in 1..6) {
-                    val amp = 1.0f / h
-                    sample += amp * sin(2.0f * PI.toFloat() * baseFreq * h * t)
-                }
-                sample += 0.3f * sin(2.0f * PI.toFloat() * baseFreq * 2 * t)
-                val envelope = when {
-                    t < 0.03f -> t / 0.03f
-                    t > 0.55f -> 1.0f - (t - 0.55f) / 0.05f
-                    else -> 1.0f
-                }
-                audioData[i] = sample * 0.5f * envelope
+                val t = i.toFloat() / SAMPLE_RATE
+                val sample = (0.3f * sin(2.0f * PI.toFloat() * freq * t) * 32767).toInt()
+                val clamped = sample.coerceIn(-32768, 32767)
+                val unsigned = if (clamped < 0) clamped + 0x10000 else clamped
+                pcmData[i * 2] = (unsigned and 0xFF).toByte()
+                pcmData[i * 2 + 1] = (unsigned shr 8 and 0xFF).toByte()
             }
 
-            val pcmBytes = ByteArray(numSamples * 2)
-            for (i in audioData.indices) {
-                val sample = (audioData[i] * 32767).toInt().coerceIn(-32768, 32767)
-                val unsigned = if (sample < 0) sample + 0x10000 else sample
-                pcmBytes[i * 2] = (unsigned and 0xFF).toByte()
-                pcmBytes[i * 2 + 1] = (unsigned shr 8 and 0xFF).toByte()
-            }
+            // ===== 使用和 VoiceService 相同的 AudioTrack 方式 =====
+            val minBufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_OUT, AUDIO_FORMAT)
+            val bufferSize = maxOf(minBufferSize, pcmData.size)
+            
+            val audioTrack = AudioTrack(
+                AudioManager.STREAM_MUSIC,
+                SAMPLE_RATE,
+                CHANNEL_OUT,
+                AUDIO_FORMAT,
+                bufferSize,
+                AudioTrack.MODE_STATIC
+            )
 
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            val maxVol = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
-            val origVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: maxVol / 2
-            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, maxVol, 0)
-
-            val attrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                .build()
-
-            val format = AudioFormat.Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(SAMPLE_RATE)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                .build()
-
-            val minBuf = AudioTrack.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            val bufSize = if (minBuf > 0) maxOf(minBuf, pcmBytes.size) else pcmBytes.size
-
-            val track = AudioTrack(attrs, format, bufSize, AudioTrack.MODE_STATIC, AudioManager.AUDIO_SESSION_ID_GENERATE)
-            if (track.state != AudioTrack.STATE_INITIALIZED) {
+            if (audioTrack.state != AudioTrack.STATE_INITIALIZED) {
                 Log.e(TAG, "AudioTrack 初始化失败")
-                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, origVol, 0)
                 return
             }
 
-            track.write(pcmBytes, 0, pcmBytes.size)
-            track.play()
-            Thread.sleep((duration * 1000 + 100).toLong())
+            audioTrack.write(pcmData, 0, pcmData.size)
+            audioTrack.play()
+            Thread.sleep(durationMs + 100L)
+            audioTrack.stop()
+            audioTrack.release()
 
-            track.stop()
-            track.release()
-            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, origVol, 0)
-
-            Log.d(TAG, "✅ 提示音播放完成: ${if (baseFreq == 180f) "飞行员" else "观察者"}")
+            Log.d(TAG, "✅ 提示音播放完成: ${if (freq == 440f) "飞行员" else "观察者"}")
 
         } catch (e: Exception) {
             Log.e(TAG, "播放提示音失败: ${e.message}", e)
