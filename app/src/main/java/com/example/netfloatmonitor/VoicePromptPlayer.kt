@@ -1,6 +1,7 @@
 package com.example.netfloatmonitor
 
 import android.content.Context
+import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.util.Log
@@ -38,9 +39,8 @@ class VoicePromptPlayer(private val context: Context) {
                 pcmData[i * 2 + 1] = (unsigned shr 8 and 0xFF).toByte()
             }
 
-            // ===== 使用和 VoiceService 相同的 AudioTrack 方式 =====
             val minBufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_OUT, AUDIO_FORMAT)
-            val bufferSize = maxOf(minBufferSize, pcmData.size)
+            val bufferSize = if (minBufferSize > 0) maxOf(minBufferSize, pcmData.size) else pcmData.size
             
             val audioTrack = AudioTrack(
                 AudioManager.STREAM_MUSIC,
