@@ -20,8 +20,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ipEdit: EditText
     private lateinit var portEdit: EditText
     private lateinit var logPath: TextView
-    private lateinit var logManager: LogManager
     private lateinit var tvStatusInfo: TextView
+    private lateinit var logManager: LogManager
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -49,8 +49,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        logManager = LogManager(this)
-
+        // 初始化控件
         ipEdit = findViewById(R.id.editIp)
         portEdit = findViewById(R.id.editPort)
         logPath = findViewById(R.id.logPath)
@@ -60,51 +59,68 @@ class MainActivity : AppCompatActivity() {
         val stopBtn = findViewById<Button>(R.id.stopBtn)
         val clearBtn = findViewById<Button>(R.id.clearBtn)
 
+        // 初始化 LogManager
+        try {
+            logManager = LogManager(this)
+        } catch (e: Exception) {
+            Toast.makeText(this, "LogManager 初始化失败: ${e.message}", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+
         loadConfig()
         showLogPath()
 
         tvStatusInfo.text = "链路状态: 待机\n当前文件: 未开启监控\n已收数据: 0 包 | 速率: 0 Hz"
 
         startBtn.setOnClickListener {
-            saveConfig()
+            try {
+                saveConfig()
 
-            if (!Settings.canDrawOverlays(this)) {
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")
-                )
-                startActivity(intent)
-                Toast.makeText(this, "请开启悬浮窗权限", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+                if (!Settings.canDrawOverlays(this)) {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                    Toast.makeText(this, "请开启悬浮窗权限", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                val port = portEdit.text.toString().toIntOrNull() ?: 16789
+
+                logManager.startNewSession()
+                val previewFile = logManager.getCurrentFileName()
+                tvStatusInfo.text = """
+                    链路状态: 正在初始化...
+                    当前文件: $previewFile
+                    已收数据: 0 包 | 速率: 0 Hz
+                """.trimIndent()
+
+                val serviceIntent = Intent(this, FloatService::class.java).apply {
+                    putExtra("PORT", port)
+                    putExtra("IP", ipEdit.text.toString())
+                }
+
+                if (android.os.Build.VERSION.SDK_INT >= 26) {
+                    startForegroundService(serviceIntent)
+                } else {
+                    startService(serviceIntent)
+                }
+
+                Toast.makeText(this, "UDP监听启动 端口:$port", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "启动失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-
-            val port = portEdit.text.toString().toIntOrNull() ?: 16789
-
-            logManager.startNewSession()
-            val previewFile = logManager.getCurrentFileName()
-            tvStatusInfo.text = """
-                链路状态: 正在初始化...
-                当前文件: $previewFile
-                已收数据: 0 包 | 速率: 0 Hz
-            """.trimIndent()
-
-            val serviceIntent = Intent(this, FloatService::class.java).apply {
-                putExtra("PORT", port)
-                putExtra("IP", ipEdit.text.toString())
-            }
-
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
-
-            Toast.makeText(this, "UDP监听启动 端口:$port", Toast.LENGTH_SHORT).show()
         }
 
         stopBtn.setOnClickListener {
-            stopService(Intent(this, FloatService::class.java))
-            Toast.makeText(this, "监听已停止，CSV表格已封存", Toast.LENGTH_SHORT).show()
+            try {
+                stopService(Intent(this, FloatService::class.java))
+                Toast.makeText(this, "监听已停止", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "停止失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
 
         clearBtn.setOnClickListener {
@@ -114,49 +130,71 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-            statusReceiver,
-            IntentFilter("com.example.netfloatmonitor.STATUS_UPDATE")
-        )
+        try {
+            LocalBroadcastManager.getInstance(this).registerReceiver(
+                statusReceiver,
+                IntentFilter("com.example.netfloatmonitor.STATUS_UPDATE")
+            )
+        } catch (e: Exception) {
+            // 忽略
+        }
     }
 
     override fun onStop() {
         super.onStop()
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(statusReceiver)
+        try {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(statusReceiver)
+        } catch (e: Exception) {
+            // 忽略
+        }
     }
 
     private fun saveConfig() {
-        getSharedPreferences("net_config", Context.MODE_PRIVATE)
-            .edit()
-            .putString("ip", ipEdit.text.toString())
-            .putString("port", portEdit.text.toString())
-            .apply()
+        try {
+            getSharedPreferences("net_config", Context.MODE_PRIVATE)
+                .edit()
+                .putString("ip", ipEdit.text.toString())
+                .putString("port", portEdit.text.toString())
+                .apply()
+        } catch (e: Exception) {
+            // 忽略
+        }
     }
 
     private fun loadConfig() {
-        val sp = getSharedPreferences("net_config", Context.MODE_PRIVATE)
-        ipEdit.setText(sp.getString("ip", "192.168.144.33"))
-        portEdit.setText(sp.getString("port", "16789"))
+        try {
+            val sp = getSharedPreferences("net_config", Context.MODE_PRIVATE)
+            ipEdit.setText(sp.getString("ip", "192.168.144.33"))
+            portEdit.setText(sp.getString("port", "16789"))
+        } catch (e: Exception) {
+            // 使用默认值
+        }
     }
 
     private fun showLogPath() {
-        logPath.text = "日志目录:\n${logManager.getLogPath()}"
+        try {
+            logPath.text = "日志目录:\n${logManager.getLogPath()}"
+        } catch (e: Exception) {
+            logPath.text = "日志目录: 获取失败"
+        }
     }
 
     private fun clearLog() {
-        val files: List<File> = logManager.getLogFiles()
-        var deletedCount = 0
-
-        files.forEach { file ->
-            if (file.exists() && file.delete()) {
-                deletedCount++
+        try {
+            val files = logManager.getLogFiles()
+            var deletedCount = 0
+            files.forEach { file ->
+                if (file.exists() && file.delete()) {
+                    deletedCount++
+                }
             }
+            Toast.makeText(
+                this,
+                if (deletedCount > 0) "已成功清除 $deletedCount 个历史CSV表格" else "没有需要清除的历史数据",
+                Toast.LENGTH_SHORT
+            ).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "清除失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-
-        Toast.makeText(
-            this,
-            if (deletedCount > 0) "已成功清除 $deletedCount 个历史CSV表格" else "没有需要清除的历史数据",
-            Toast.LENGTH_SHORT
-        ).show()
     }
 }
