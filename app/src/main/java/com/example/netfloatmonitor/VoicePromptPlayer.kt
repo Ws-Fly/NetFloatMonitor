@@ -40,13 +40,11 @@ class VoicePromptPlayer(private val context: Context) {
             val t = i.toFloat() / SAMPLE_RATE.toFloat()
             var sample = 0f
             
-            // 基频 + 谐波（更清晰的提示音）
             for (h in 1..5) {
                 val amp = 1.0f / h
                 sample += amp * sin(2.0f * PI.toFloat() * baseFreq * h * t)
             }
             
-            // 包络（淡入淡出）
             val envelope = when {
                 t < 0.08f -> t / 0.08f
                 t > 0.72f -> (1.0f - (t - 0.72f) / 0.08f)
@@ -64,7 +62,7 @@ class VoicePromptPlayer(private val context: Context) {
             pcmBytes[i * 2 + 1] = (clampedSample shr 8 and 0xFF).toByte()
         }
 
-        Log.d(TAG, "提示音合成完成: ${if (baseFreq == 180f) "飞行员" else "观察者"}模式")
+        Log.d(TAG, "提示音合成完成: ${if (baseFreq == 180f) "飞行员" else "观察者"}")
         return pcmBytes
     }
 
@@ -73,19 +71,17 @@ class VoicePromptPlayer(private val context: Context) {
         isPlaying = true
 
         try {
-            // ===== 关键修复：使用 STREAM_MUSIC 确保媒体通道播放 =====
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            val originalVolume = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-            val maxVolume = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
             
-            // 保存当前音量，播放时用 40% 音量
-            val targetVolume = (maxVolume * 0.4f).toInt().coerceAtLeast(1)
+            val maxVolume = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
+            val currentVolume = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: maxVolume / 2
+            
+            val targetVolume = (maxVolume * 0.5f).toInt().coerceAtLeast(1)
             audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0)
 
-            // ===== 修复：明确指定流类型为 STREAM_MUSIC =====
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build()
 
             val audioFormat = AudioFormat.Builder()
@@ -94,13 +90,17 @@ class VoicePromptPlayer(private val context: Context) {
                 .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                 .build()
 
-            val minBufferSize = AudioTrack.getMinBufferSize(
+            var minBufferSize = AudioTrack.getMinBufferSize(
                 SAMPLE_RATE,
                 AudioFormat.CHANNEL_OUT_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
             
-            val bufferSize = if (minBufferSize > 0) maxOf(minBufferSize, pcmData.size * 2) else pcmData.size * 2
+            if (minBufferSize <= 0) {
+                minBufferSize = pcmData.size * 2
+            }
+            
+            val bufferSize = maxOf(minBufferSize, pcmData.size * 2)
 
             audioTrack = AudioTrack(
                 audioAttributes,
@@ -110,31 +110,35 @@ class VoicePromptPlayer(private val context: Context) {
                 AudioManager.AUDIO_SESSION_ID_GENERATE
             )
 
-            audioTrack?.play()
-            audioTrack?.write(pcmData, 0, pcmData.size)
-
-            // 等待播放完成
-            val totalFrames = pcmData.size / 2
-            var playedFrames = 0
-            val startTime = System.currentTimeMillis()
-            val timeout = (DURATION_SECONDS * 1000 + 500).toLong()
-
-            while (playedFrames < totalFrames && System.currentTimeMillis() - startTime < timeout) {
-                playedFrames = audioTrack?.playbackHeadPosition ?: totalFrames
-                Thread.sleep(20)
+            if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
+                Log.e(TAG, "AudioTrack 初始化失败")
+                isPlaying = false
+                return
             }
+
+            audioTrack?.play()
+            
+            var offset = 0
+            val chunkSize = 1024
+            while (offset < pcmData.size) {
+                val end = minOf(offset + chunkSize, pcmData.size)
+                val chunk = pcmData.copyOfRange(offset, end)
+                audioTrack?.write(chunk, 0, chunk.size)
+                offset = end
+            }
+
+            Thread.sleep((DURATION_SECONDS * 1000).toLong() + 100)
 
             audioTrack?.stop()
             audioTrack?.release()
             audioTrack = null
 
-            // 恢复音量
-            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
+            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0)
 
-            Log.d(TAG, "提示音播放完成")
+            Log.d(TAG, "✅ 提示音播放完成")
 
         } catch (e: Exception) {
-            Log.e(TAG, "播放提示音异常: ${e.message}")
+            Log.e(TAG, "播放提示音异常: ${e.message}", e)
             try {
                 val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
                 audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, 
