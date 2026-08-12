@@ -103,6 +103,7 @@ class AudioDeviceManager(private val context: Context) {
 
     fun switchToSpeaker() {
         try {
+            // ===== 修复：使用传统方式切换，兼容 Android 12+ =====
             audioManager.setSpeakerphoneOn(true)
             audioManager.setBluetoothScoOn(false)
             audioManager.isWiredHeadsetOn = false
@@ -123,6 +124,7 @@ class AudioDeviceManager(private val context: Context) {
                     if (device.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
                         device.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
                         device.type == AudioDeviceInfo.TYPE_USB_HEADSET) {
+                        // ===== 修复：只传非 null 值 =====
                         audioManager.setCommunicationDevice(device)
                         currentOutputDevice = "有线耳机"
                         deviceChangeListener?.invoke(currentOutputDevice)
@@ -132,6 +134,7 @@ class AudioDeviceManager(private val context: Context) {
                 }
             }
             
+            // 降级方案
             audioManager.setSpeakerphoneOn(false)
             audioManager.setBluetoothScoOn(false)
             audioManager.isWiredHeadsetOn = true
@@ -151,6 +154,7 @@ class AudioDeviceManager(private val context: Context) {
                 for (device in devices) {
                     if (device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                         device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
+                        // ===== 修复：只传非 null 值 =====
                         audioManager.setCommunicationDevice(device)
                         currentOutputDevice = "蓝牙耳机"
                         deviceChangeListener?.invoke(currentOutputDevice)
@@ -160,6 +164,7 @@ class AudioDeviceManager(private val context: Context) {
                 }
             }
             
+            // 降级方案
             audioManager.setSpeakerphoneOn(false)
             audioManager.setBluetoothScoOn(true)
             audioManager.isWiredHeadsetOn = false
