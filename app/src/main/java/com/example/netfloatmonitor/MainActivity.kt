@@ -20,7 +20,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var logManager: LogManager
     private lateinit var tvStatusInfo: TextView
     private lateinit var btnVoiceSettings: Button
-    private lateinit var btnAudioTest: Button
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -55,7 +54,6 @@ class MainActivity : AppCompatActivity() {
         logPath = findViewById(R.id.logPath)
         tvStatusInfo = findViewById(R.id.tvStatusInfo)
         btnVoiceSettings = findViewById(R.id.btnVoiceSettings)
-        btnAudioTest = findViewById(R.id.btnAudioTest)
 
         val startBtn = findViewById<Button>(R.id.startBtn)
         val stopBtn = findViewById<Button>(R.id.stopBtn)
@@ -115,12 +113,6 @@ class MainActivity : AppCompatActivity() {
         // 语音对讲设置入口
         btnVoiceSettings.setOnClickListener {
             val intent = Intent(this, VoiceSettingsActivity::class.java)
-            startActivity(intent)
-        }
-
-        // ===== 音频测试工具入口 =====
-        btnAudioTest.setOnClickListener {
-            val intent = Intent(this, AudioTestActivity::class.java)
             startActivity(intent)
         }
     }
