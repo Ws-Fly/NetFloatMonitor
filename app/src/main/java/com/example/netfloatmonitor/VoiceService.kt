@@ -448,6 +448,7 @@ class VoiceService : Service() {
         }
     }
 
+    // ===== 角色切换（添加空安全检查） =====
     private fun handleRoleChange(role: Int) {
         val newIsPilot = role == 0
         if (newIsPilot != isPilotMode.get()) {
@@ -457,7 +458,13 @@ class VoiceService : Service() {
                 startSendThread()
                 if (promptEnabled) {
                     mainHandler.post {
-                        try { promptPlayer.playPilotPrompt() } catch (e: Exception) {}
+                        try {
+                            if (::promptPlayer.isInitialized) {
+                                promptPlayer.playPilotPrompt()
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "播放提示音失败: ${e.message}")
+                        }
                     }
                 }
                 broadcastRoleChange(0)
@@ -468,7 +475,13 @@ class VoiceService : Service() {
                 sendThread = null
                 if (promptEnabled) {
                     mainHandler.post {
-                        try { promptPlayer.playObserverPrompt() } catch (e: Exception) {}
+                        try {
+                            if (::promptPlayer.isInitialized) {
+                                promptPlayer.playObserverPrompt()
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "播放提示音失败: ${e.message}")
+                        }
                     }
                 }
                 broadcastRoleChange(1)
