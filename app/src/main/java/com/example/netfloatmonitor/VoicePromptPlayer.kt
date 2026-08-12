@@ -1,6 +1,7 @@
 package com.example.netfloatmonitor
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
@@ -13,42 +14,59 @@ class VoicePromptPlayer(private val context: Context) {
     companion object {
         private const val TAG = "VoicePromptPlayer"
         private const val SAMPLE_RATE = 8000
-        private const val CHANNEL_OUT = AudioFormat.CHANNEL_OUT_MONO
+        private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_OUT_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     }
 
     fun playPilotPrompt() {
-        playTone(440f, 300)
+        playPrompt(880f, 250, "飞行员")
     }
 
     fun playObserverPrompt() {
-        playTone(660f, 300)
+        playPrompt(660f, 250, "观察者")
     }
 
-    private fun playTone(freq: Float, durationMs: Int) {
+    private fun playPrompt(freq: Float, durationMs: Int, label: String) {
         try {
             val numSamples = SAMPLE_RATE * durationMs / 1000
             val pcmData = ByteArray(numSamples * 2)
 
             for (i in 0 until numSamples) {
                 val t = i.toFloat() / SAMPLE_RATE
-                val sample = (0.3f * sin(2.0f * PI.toFloat() * freq * t) * 32767).toInt()
-                val clamped = sample.coerceIn(-32768, 32767)
-                val unsigned = if (clamped < 0) clamped + 0x10000 else clamped
+                var sample = 0.4f * sin(2.0f * PI.toFloat() * freq * t)
+                sample += 0.3f * sin(2.0f * PI.toFloat() * (freq * 1.5f) * t)
+                val envelope = when {
+                    t < 0.02f -> t / 0.02f
+                    t < 0.15f -> 1.0f
+                    else -> 1.0f - (t - 0.15f) / (durationMs / 1000f - 0.15f) * 0.9f
+                }
+                sample *= envelope
+                val intSample = (sample * 30000).toInt().coerceIn(-32768, 32767)
+                val unsigned = if (intSample < 0) intSample + 0x10000 else intSample
                 pcmData[i * 2] = (unsigned and 0xFF).toByte()
                 pcmData[i * 2 + 1] = (unsigned shr 8 and 0xFF).toByte()
             }
 
-            val minBufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_OUT, AUDIO_FORMAT)
-            val bufferSize = if (minBufferSize > 0) maxOf(minBufferSize, pcmData.size) else pcmData.size
-            
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+
+            val audioFormat = AudioFormat.Builder()
+                .setEncoding(AUDIO_FORMAT)
+                .setSampleRate(SAMPLE_RATE)
+                .setChannelMask(CHANNEL_CONFIG)
+                .build()
+
+            val minBufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+            val bufferSize = if (minBufferSize > 0) maxOf(minBufferSize, pcmData.size * 2) else pcmData.size * 2
+
             val audioTrack = AudioTrack(
-                AudioManager.STREAM_MUSIC,
-                SAMPLE_RATE,
-                CHANNEL_OUT,
-                AUDIO_FORMAT,
+                audioAttributes,
+                audioFormat,
                 bufferSize,
-                AudioTrack.MODE_STATIC
+                AudioTrack.MODE_STATIC,
+                AudioManager.AUDIO_SESSION_ID_GENERATE
             )
 
             if (audioTrack.state != AudioTrack.STATE_INITIALIZED) {
@@ -58,11 +76,11 @@ class VoicePromptPlayer(private val context: Context) {
 
             audioTrack.write(pcmData, 0, pcmData.size)
             audioTrack.play()
-            Thread.sleep(durationMs + 100L)
+            Thread.sleep(durationMs + 150L)
             audioTrack.stop()
             audioTrack.release()
 
-            Log.d(TAG, "✅ 提示音播放完成: ${if (freq == 440f) "飞行员" else "观察者"}")
+            Log.d(TAG, "✅ 提示音播放完成: $label")
 
         } catch (e: Exception) {
             Log.e(TAG, "播放提示音失败: ${e.message}", e)
