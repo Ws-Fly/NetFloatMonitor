@@ -127,17 +127,19 @@ class VoiceService : Service() {
     private fun collectNetworkInfo() {
         try {
             val networkInterfaces = NetworkInterface.getNetworkInterfaces()
-            while (networkInterfaces.hasMoreElements()) {
-                val ni = networkInterfaces.nextElement()
-                val addresses = ni.inetAddresses
-                while (addresses.hasMoreElements()) {
-                    val address = addresses.nextElement()
-                    val hostAddress = address.hostAddress ?: continue
-                    if (!hostAddress.contains(":") && !hostAddress.startsWith("127.")) {
-                        localIpAddresses.add(hostAddress)
-                        if (selectedNetworkInterface == null && ni.isUp) {
-                            selectedNetworkInterface = ni
-                            Log.d(TAG, "✅ 选中网卡: ${ni.displayName}, IP: $hostAddress")
+            if (networkInterfaces != null) {
+                while (networkInterfaces.hasMoreElements()) {
+                    val ni = networkInterfaces.nextElement()
+                    val addresses = ni.inetAddresses
+                    while (addresses.hasMoreElements()) {
+                        val address = addresses.nextElement()
+                        val hostAddress = address.hostAddress ?: continue
+                        if (!hostAddress.contains(":") && !hostAddress.startsWith("127.")) {
+                            localIpAddresses.add(hostAddress)
+                            if (selectedNetworkInterface == null && ni.isUp) {
+                                selectedNetworkInterface = ni
+                                Log.d(TAG, "✅ 选中网卡: ${ni.displayName}, IP: $hostAddress")
+                            }
                         }
                     }
                 }
@@ -145,6 +147,13 @@ class VoiceService : Service() {
             Log.d(TAG, "本机 IP 列表: $localIpAddresses")
         } catch (e: Exception) {
             Log.e(TAG, "获取网络信息失败: ${e.message}")
+            // 备用方案
+            try {
+                val localHost = InetAddress.getLocalHost()
+                localIpAddresses.add(localHost.hostAddress ?: "127.0.0.1")
+            } catch (e2: Exception) {
+                localIpAddresses.add("127.0.0.1")
+            }
         }
     }
 
@@ -190,7 +199,7 @@ class VoiceService : Service() {
 
             multicastSocket = MulticastSocket(multicastPort).apply {
                 reuseAddress = true
-                setTimeToLive(32)
+                setTimeToLive(64)  // 增大 TTL 确保跨网段
                 
                 selectedNetworkInterface?.let { ni ->
                     try {
@@ -205,8 +214,30 @@ class VoiceService : Service() {
                 Log.d(TAG, "✅ 组播已加入: ${multicastGroup?.hostAddress}:$multicastPort")
             }
 
+            // ===== 初始化音频组件 =====
+            var retryCount = 0
+            while (retryCount < 3 && audioRecord == null) {
+                initAudioRecord()
+                if (audioRecord == null) {
+                    Log.w(TAG, "AudioRecord 初始化失败，重试 ${retryCount + 1}/3")
+                    Thread.sleep(200)
+                    retryCount++
+                }
+            }
+            
+            if (audioRecord == null) {
+                Log.e(TAG, "AudioRecord 初始化失败，语音服务无法启动")
+                stopSelf()
+                return
+            }
+            
             initAudioTrack()
-            initAudioRecord()
+            if (audioTrack == null) {
+                Log.e(TAG, "AudioTrack 初始化失败，语音服务无法启动")
+                stopSelf()
+                return
+            }
+            
             startReceiveThread()
             startPlayThread()
 
@@ -280,7 +311,11 @@ class VoiceService : Service() {
                 
                 if (promptEnabled) {
                     mainHandler.post {
-                        promptPlayer.playPilotPrompt()
+                        try {
+                            promptPlayer.playPilotPrompt()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "播放飞行员提示音失败: ${e.message}")
+                        }
                     }
                 }
                 
@@ -293,7 +328,11 @@ class VoiceService : Service() {
                 
                 if (promptEnabled) {
                     mainHandler.post {
-                        promptPlayer.playObserverPrompt()
+                        try {
+                            promptPlayer.playObserverPrompt()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "播放观察者提示音失败: ${e.message}")
+                        }
                     }
                 }
                 
@@ -327,86 +366,96 @@ class VoiceService : Service() {
     }
 
     private fun initAudioRecord() {
-        val minBufferSize = AudioRecord.getMinBufferSize(
-            sampleRate,
-            CHANNEL_CONFIG,
-            PCM_ENCODING
-        )
+        try {
+            val minBufferSize = AudioRecord.getMinBufferSize(
+                sampleRate,
+                CHANNEL_CONFIG,
+                PCM_ENCODING
+            )
 
-        if (minBufferSize <= 0) {
-            Log.e(TAG, "获取AudioRecord最小缓冲区失败")
-            return
-        }
+            if (minBufferSize <= 0) {
+                Log.e(TAG, "获取AudioRecord最小缓冲区失败")
+                return
+            }
 
-        val bufferSize = minBufferSize * 4
-        
-        audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-            sampleRate,
-            CHANNEL_CONFIG,
-            PCM_ENCODING,
-            bufferSize
-        )
-
-        if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e(TAG, "AudioRecord初始化失败，尝试使用MIC源")
+            val bufferSize = minBufferSize * 4
+            
             audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 sampleRate,
                 CHANNEL_CONFIG,
                 PCM_ENCODING,
                 bufferSize
             )
+
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord再次初始化失败")
-                audioRecord = null
-                return
+                Log.e(TAG, "AudioRecord初始化失败，尝试使用MIC源")
+                audioRecord = AudioRecord(
+                    MediaRecorder.AudioSource.MIC,
+                    sampleRate,
+                    CHANNEL_CONFIG,
+                    PCM_ENCODING,
+                    bufferSize
+                )
+                if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                    Log.e(TAG, "AudioRecord再次初始化失败")
+                    audioRecord = null
+                    return
+                }
             }
+            
+            audioRecord?.startRecording()
+            Log.d(TAG, "AudioRecord已初始化: ${sampleRate}Hz")
+        } catch (e: Exception) {
+            Log.e(TAG, "AudioRecord初始化异常: ${e.message}")
+            audioRecord = null
         }
-        
-        audioRecord?.startRecording()
-        Log.d(TAG, "AudioRecord已初始化: ${sampleRate}Hz, 缓冲区: $bufferSize")
     }
 
     private fun initAudioTrack() {
-        val minBufferSize = AudioTrack.getMinBufferSize(
-            sampleRate,
-            CHANNEL_OUT_CONFIG,
-            PCM_ENCODING
-        )
+        try {
+            val minBufferSize = AudioTrack.getMinBufferSize(
+                sampleRate,
+                CHANNEL_OUT_CONFIG,
+                PCM_ENCODING
+            )
 
-        if (minBufferSize <= 0) {
-            Log.e(TAG, "获取AudioTrack最小缓冲区失败")
-            return
-        }
+            if (minBufferSize <= 0) {
+                Log.e(TAG, "获取AudioTrack最小缓冲区失败")
+                return
+            }
 
-        val bufferSize = minBufferSize * 6
-        
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build()
+            val bufferSize = minBufferSize * 6
+            
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
 
-        val audioFormat = AudioFormat.Builder()
-            .setEncoding(PCM_ENCODING)
-            .setSampleRate(sampleRate)
-            .setChannelMask(CHANNEL_OUT_CONFIG)
-            .build()
+            val audioFormat = AudioFormat.Builder()
+                .setEncoding(PCM_ENCODING)
+                .setSampleRate(sampleRate)
+                .setChannelMask(CHANNEL_OUT_CONFIG)
+                .build()
 
-        audioTrack = AudioTrack(
-            audioAttributes,
-            audioFormat,
-            bufferSize,
-            AudioTrack.MODE_STREAM,
-            AudioManager.AUDIO_SESSION_ID_GENERATE
-        )
+            audioTrack = AudioTrack(
+                audioAttributes,
+                audioFormat,
+                bufferSize,
+                AudioTrack.MODE_STREAM,
+                AudioManager.AUDIO_SESSION_ID_GENERATE
+            )
 
-        if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
-            Log.e(TAG, "AudioTrack初始化失败")
+            if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
+                Log.e(TAG, "AudioTrack初始化失败")
+                audioTrack = null
+            } else {
+                audioTrack?.play()
+                Log.d(TAG, "AudioTrack已初始化: ${sampleRate}Hz")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "AudioTrack初始化异常: ${e.message}")
             audioTrack = null
-        } else {
-            audioTrack?.play()
-            Log.d(TAG, "AudioTrack已初始化: ${sampleRate}Hz, 缓冲区: $bufferSize")
         }
     }
 
@@ -414,8 +463,6 @@ class VoiceService : Service() {
         receiveThread = thread(name = "VoiceReceiveThread") {
             val buffer = ByteArray(4096)
             val packet = DatagramPacket(buffer, buffer.size)
-
-            Log.d(TAG, "📥 接收线程启动，本机 IP 黑名单: $localIpAddresses")
 
             while (isRunning.get() && !Thread.currentThread().isInterrupted) {
                 try {
@@ -442,14 +489,13 @@ class VoiceService : Service() {
                         val codecTypeFromPacket = data[8].toInt() and 0xFF
                         val audioData = data.copyOfRange(HEADER_SIZE, data.size)
                         
-                        val codec = CodecFactory.getCodec(
-                            when (codecTypeFromPacket) {
-                                0 -> "PCM"
-                                1 -> "G.711"
-                                2 -> "Opus"
-                                else -> "PCM"
-                            }
-                        )
+                        // ===== 修复：解码类型映射 =====
+                        val codec = when (codecTypeFromPacket) {
+                            0 -> CodecFactory.getCodec("PCM")
+                            1 -> CodecFactory.getCodec("G.711")
+                            2 -> CodecFactory.getCodec("ADPCM")
+                            else -> CodecFactory.getCodec("PCM")
+                        }
                         
                         val pcmData = codec.decode(audioData, sampleRate)
                         
@@ -503,7 +549,7 @@ class VoiceService : Service() {
             val buffer = ByteArray(4096)
             val pcmPacketSize = (sampleRate * 2 * PACKET_DURATION_MS / 1000).toInt()
             
-            Log.d(TAG, "🔊 发送线程启动 - 采样率: $sampleRate, 包大小: $pcmPacketSize 字节")
+            Log.d(TAG, "🔊 发送线程启动 - 采样率: $sampleRate, 帧大小: $pcmPacketSize 字节")
             Log.d(TAG, "🔊 组播目标: ${multicastGroup?.hostAddress}:$multicastPort")
 
             var sendCount = 0
@@ -525,9 +571,8 @@ class VoiceService : Service() {
                     if (readSize > 0) {
                         val pcmData = buffer.copyOf(readSize)
                         
-                        // ===== 音频归一化处理（消除杂音） =====
+                        // ===== 音频归一化处理 =====
                         val normalizedData = normalizeAudio(pcmData)
-                        
                         val encodedData = audioCodec.encode(normalizedData, sampleRate)
                         
                         if (encodedData != null && encodedData.isNotEmpty()) {
@@ -545,10 +590,11 @@ class VoiceService : Service() {
                             packetData[6] = (timestamp shr 8 and 0xFF).toByte()
                             packetData[7] = (timestamp and 0xFF).toByte()
                             
+                            // ===== 修复：编码类型映射 =====
                             val codecId = when (audioCodec.getName()) {
                                 "PCM" -> 0
                                 "G.711" -> 1
-                                "Opus" -> 2
+                                "ADPCM" -> 2
                                 else -> 0
                             }
                             packetData[8] = codecId.toByte()
@@ -565,11 +611,11 @@ class VoiceService : Service() {
                             multicastSocket?.send(packet)
                             
                             sendCount++
-                            if (sendCount % 10 == 0) {
+                            if (sendCount % 20 == 0) {
                                 val compressionRatio = if (audioCodec.getName() != "PCM") {
                                     (1 - encodedData.size.toFloat() / pcmPacketSize) * 100
                                 } else 0f
-                                Log.d(TAG, "📤 已发送 $sendCount 包, 压缩率: ${"%.1f".format(compressionRatio)}%, 包大小: ${packetData.size} 字节")
+                                Log.d(TAG, "📤 已发送 $sendCount 包, 压缩率: ${"%.1f".format(compressionRatio)}%")
                             }
                         }
                     }
@@ -587,7 +633,6 @@ class VoiceService : Service() {
         }
     }
 
-    // ===== 音频归一化处理（消除杂音） =====
     private fun normalizeAudio(pcmData: ByteArray): ByteArray {
         if (pcmData.size < 2) return pcmData
         
