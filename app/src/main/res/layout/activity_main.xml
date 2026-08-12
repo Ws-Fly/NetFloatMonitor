@@ -62,11 +62,22 @@
         android:backgroundTint="#2196F3"
         android:textColor="#FFFFFF" />
 
+    <!-- ===== 音频测试工具入口 ===== -->
+    <Button
+        android:id="@+id/btnAudioTest"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="🔬 音频测试工具"
+        android:textSize="15sp"
+        android:backgroundTint="#9B59B6"
+        android:textColor="#FFFFFF" />
+
     <!-- 实时状态监控区面板 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
+        android:layout_marginTop="16dp"
         android:orientation="vertical"
         android:background="#F5F5F5"
         android:padding="12dp">
@@ -94,7 +105,7 @@
         android:id="@+id/logPath"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
+        android:layout_marginTop="16dp"
         android:textColor="#888888"
         android:textSize="12sp" />
 
