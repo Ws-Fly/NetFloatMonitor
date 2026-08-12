@@ -11,6 +11,7 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -24,6 +25,7 @@ import java.net.MulticastSocket
 import java.net.NetworkInterface
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
 
 class VoiceService : Service() {
@@ -32,10 +34,17 @@ class VoiceService : Service() {
         private const val TAG = "VoiceService"
         private const val NOTIFICATION_ID = 1002
         private const val CHANNEL_ID = "voice_channel"
-        private const val PCM_ENCODING = AudioFormat.ENCODING_PCM_16BIT
-        private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
-        private const val CHANNEL_OUT_CONFIG = AudioFormat.CHANNEL_OUT_MONO
-        private const val PACKET_DURATION_MS = 60
+        
+        // ===== 8kHz 黄金对讲采样率 =====
+        private const val SAMPLE_RATE = 8000
+        private const val CHANNEL_IN = AudioFormat.CHANNEL_IN_MONO
+        private const val CHANNEL_OUT = AudioFormat.CHANNEL_OUT_MONO
+        private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+        
+        // 20ms 帧大小
+        private const val PCM_FRAME_SIZE = 320
+        // 3帧合并发送（60ms），减少网络开销
+        private const val BATCH_COUNT = 3
         private const val HEADER_SIZE = 9
     }
 
@@ -45,6 +54,7 @@ class VoiceService : Service() {
     private val isPttOverridden = AtomicBoolean(false)
     
     private val audioQueue = ConcurrentLinkedQueue<ByteArray>()
+    
     private var multicastSocket: MulticastSocket? = null
     private var multicastGroup: InetAddress? = null
     private var multicastPort: Int = 50000
@@ -56,27 +66,29 @@ class VoiceService : Service() {
     private var sendThread: Thread? = null
     private var playThread: Thread? = null
     
-    private var sampleRate: Int = 8000
-    private var codecType: String = "PCM"
     private var promptEnabled: Boolean = true
-    private var audioCodec: AudioCodec = PcmCodec()
     private var packetSeq: Int = 0
+    private var batchIndex: Int = 0
     
     private lateinit var promptPlayer: VoicePromptPlayer
     private lateinit var audioDeviceManager: AudioDeviceManager
+    
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var currentRoleFromJson: Int = 1
     
     private val jitterBuffer = mutableListOf<ByteArray>()
     private val MAX_JITTER_BUFFER = 3
     private val localIpAddresses = mutableListOf<String>()
     private var selectedNetworkInterface: NetworkInterface? = null
+    
+    private var multicastLock: WifiManager.MulticastLock? = null
+    
+    private val rxPackets = AtomicLong(0)
+    private val txPackets = AtomicLong(0)
 
     private val roleReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "com.example.netfloatmonitor.ROLE_CHANGE") {
                 val role = intent.getIntExtra("ROLE", 1)
-                currentRoleFromJson = role
                 if (!isPttOverridden.get()) {
                     handleRoleChange(role)
                 }
@@ -97,15 +109,25 @@ class VoiceService : Service() {
         super.onCreate()
         Log.d(TAG, "VoiceService onCreate")
         createNotificationChannel()
+        
         collectNetworkInfo()
+        acquireMulticastLock()
+        
         promptPlayer = VoicePromptPlayer(this)
         audioDeviceManager = AudioDeviceManager(this)
         audioDeviceManager.setDeviceChangeListener { device ->
             Log.d(TAG, "音频设备切换: $device")
             broadcastDeviceChange(device)
         }
-        LocalBroadcastManager.getInstance(this).registerReceiver(roleReceiver, IntentFilter("com.example.netfloatmonitor.ROLE_CHANGE"))
-        LocalBroadcastManager.getInstance(this).registerReceiver(pttReceiver, IntentFilter("com.example.netfloatmonitor.VOICE_PTT_STATE"))
+        
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            roleReceiver,
+            IntentFilter("com.example.netfloatmonitor.ROLE_CHANGE")
+        )
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            pttReceiver,
+            IntentFilter("com.example.netfloatmonitor.VOICE_PTT_STATE")
+        )
     }
 
     private fun collectNetworkInfo() {
@@ -134,17 +156,28 @@ class VoiceService : Service() {
         }
     }
 
+    private fun acquireMulticastLock() {
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            if (wifiManager != null) {
+                multicastLock = wifiManager.createMulticastLock("netaudiotalk_mcast_lock").apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+                Log.d(TAG, "✅ 组播锁已获取")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "⚠️ 获取组播锁失败: ${e.message}")
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.getStringExtra("ACTION") ?: return START_NOT_STICKY
         when (action) {
             "START" -> {
                 multicastPort = intent.getIntExtra("MULTICAST_PORT", 50000)
-                codecType = intent.getStringExtra("CODEC") ?: "PCM"
-                val sampleRateStr = intent.getStringExtra("SAMPLE_RATE") ?: "8kHz"
-                sampleRate = if (sampleRateStr.contains("16")) 16000 else 8000
                 promptEnabled = intent.getBooleanExtra("PROMPT_ENABLED", true)
-                audioCodec = CodecFactory.getCodec(codecType)
-                Log.d(TAG, "使用编解码器: ${audioCodec.getName()}")
+
                 val ipStr = intent.getStringExtra("MULTICAST_IP") ?: "224.0.0.1"
                 try {
                     multicastGroup = InetAddress.getByName(ipStr)
@@ -153,6 +186,7 @@ class VoiceService : Service() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
+
                 startVoice()
             }
             "STOP" -> {
@@ -167,89 +201,56 @@ class VoiceService : Service() {
         if (isRunning.get()) return
         try {
             startForeground(NOTIFICATION_ID, createNotification())
+            
+            // ===== 创建组播Socket =====
+            val localAddr = if (localIpAddresses.isNotEmpty()) {
+                InetAddress.getByName(localIpAddresses.first())
+            } else {
+                null
+            }
+            
             multicastSocket = MulticastSocket(multicastPort).apply {
                 reuseAddress = true
                 setTimeToLive(64)
-                selectedNetworkInterface?.let { ni ->
-                    try { setNetworkInterface(ni) } catch (e: Exception) { /* ignore */ }
+                
+                // 绑定到指定网卡
+                if (localAddr != null) {
+                    val ni = NetworkInterface.getByInetAddress(localAddr)
+                    if (ni != null) {
+                        setNetworkInterface(ni)
+                        Log.d(TAG, "✅ 绑定到网卡: ${ni.displayName}")
+                    }
                 }
+                loopbackMode = false
                 joinGroup(multicastGroup)
                 Log.d(TAG, "✅ 组播已加入: ${multicastGroup?.hostAddress}:$multicastPort")
             }
 
+            // ===== 初始化 AudioTrack（使用标准方式，保证兼容性） =====
+            initAudioTrack()
+            
             // ===== 初始化 AudioRecord =====
-            val minBufSize = AudioRecord.getMinBufferSize(sampleRate, CHANNEL_CONFIG, PCM_ENCODING)
-            if (minBufSize <= 0) {
-                Log.e(TAG, "AudioRecord 最小缓冲区获取失败")
-                stopSelf()
-                return
-            }
-            val bufferSize = minBufSize * 4
-            audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                sampleRate,
-                CHANNEL_CONFIG,
-                PCM_ENCODING,
-                bufferSize
-            )
-            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord 初始化失败，尝试使用 MIC 源")
-                audioRecord = AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
-                    sampleRate,
-                    CHANNEL_CONFIG,
-                    PCM_ENCODING,
-                    bufferSize
-                )
-                if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                    Log.e(TAG, "AudioRecord 再次初始化失败")
-                    audioRecord = null
-                    stopSelf()
-                    return
-                }
-            }
-            audioRecord?.startRecording()
-            if (audioRecord?.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
-                Log.e(TAG, "AudioRecord 启动录音失败")
-                audioRecord = null
-                stopSelf()
-                return
-            }
-            Log.d(TAG, "✅ AudioRecord 已初始化: ${sampleRate}Hz, 缓冲区: $bufferSize")
-
-            // ===== 初始化 AudioTrack =====
-            val minTrackBuf = AudioTrack.getMinBufferSize(sampleRate, CHANNEL_OUT_CONFIG, PCM_ENCODING)
-            val trackBufferSize = if (minTrackBuf > 0) minTrackBuf * 4 else 8192
-            val attrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build()
-            val format = AudioFormat.Builder()
-                .setEncoding(PCM_ENCODING)
-                .setSampleRate(sampleRate)
-                .setChannelMask(CHANNEL_OUT_CONFIG)
-                .build()
-            audioTrack = AudioTrack(attrs, format, trackBufferSize, AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE)
-            if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioTrack 初始化失败")
-                audioTrack = null
-                stopSelf()
-                return
-            }
-            audioTrack?.play()
-            Log.d(TAG, "✅ AudioTrack 已初始化: ${sampleRate}Hz")
+            initAudioRecord()
 
             startReceiveThread()
             startPlayThread()
+
             isRunning.set(true)
             isPilotMode.set(false)
             isMuted.set(false)
             isPttOverridden.set(false)
             packetSeq = 0
+            batchIndex = 0
+            
             jitterBuffer.clear()
+            rxPackets.set(0)
+            txPackets.set(0)
+
             broadcastStatus()
             audioDeviceManager.checkAndSwitchToBestDevice()
-            Log.d(TAG, "语音服务已启动")
+            
+            Log.d(TAG, "✅ 语音服务已启动")
+
         } catch (e: Exception) {
             Log.e(TAG, "启动语音服务失败: ${e.message}", e)
             stopVoice()
@@ -257,44 +258,240 @@ class VoiceService : Service() {
         }
     }
 
-    private fun stopVoice() {
-        isRunning.set(false)
-        isPilotMode.set(false)
-        isPttOverridden.set(false)
-        receiveThread?.interrupt(); receiveThread = null
-        sendThread?.interrupt(); sendThread = null
-        playThread?.interrupt(); playThread = null
-        audioRecord?.let { 
-            try { 
-                if (it.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                    it.stop() 
-                }
-                it.release() 
-            } catch (e: Exception) {} 
+    // ===== 参考您朋友的 AudioTrack 初始化 =====
+    private fun initAudioTrack() {
+        try {
+            val minTrackBuf = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_OUT, AUDIO_FORMAT)
+            val bufferSize = maxOf(minTrackBuf, PCM_FRAME_SIZE * 4)
+            
+            audioTrack = AudioTrack(
+                AudioManager.STREAM_MUSIC,
+                SAMPLE_RATE,
+                CHANNEL_OUT,
+                AUDIO_FORMAT,
+                bufferSize,
+                AudioTrack.MODE_STREAM
+            ).apply { 
+                play() 
+                Log.d(TAG, "✅ AudioTrack 初始化成功: ${SAMPLE_RATE}Hz, 缓冲区: $bufferSize")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "AudioTrack 初始化失败: ${e.message}")
+            audioTrack = null
         }
-        audioRecord = null
-        audioTrack?.let { 
-            try { 
-                if (it.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                    it.stop() 
-                }
-                it.release() 
-            } catch (e: Exception) {} 
-        }
-        audioTrack = null
-        multicastSocket?.let { 
-            try { 
-                it.leaveGroup(multicastGroup)
-                it.close() 
-            } catch (e: Exception) {} 
-        }
-        multicastSocket = null
-        audioQueue.clear()
-        jitterBuffer.clear()
-        broadcastStatus()
-        Log.d(TAG, "语音服务已停止")
     }
 
+    // ===== 参考您朋友的 AudioRecord 初始化 =====
+    private fun initAudioRecord() {
+        try {
+            val minRecBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_IN, AUDIO_FORMAT)
+            val bufferSize = maxOf(minRecBuf, PCM_FRAME_SIZE * 4)
+            
+            audioRecord = AudioRecord(
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                SAMPLE_RATE,
+                CHANNEL_IN,
+                AUDIO_FORMAT,
+                bufferSize
+            )
+
+            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                Log.e(TAG, "AudioRecord 初始化失败")
+                audioRecord = null
+                return
+            }
+            
+            audioRecord?.startRecording()
+            Log.d(TAG, "✅ AudioRecord 初始化成功: ${SAMPLE_RATE}Hz, 缓冲区: $bufferSize")
+        } catch (e: Exception) {
+            Log.e(TAG, "AudioRecord 初始化异常: ${e.message}")
+            audioRecord = null
+        }
+    }
+
+    // ===== 接收线程 =====
+    private fun startReceiveThread() {
+        receiveThread = thread(name = "VoiceReceiveThread") {
+            // 接收缓冲区大小：压缩后的数据 (PCM_FRAME_SIZE / 2) * BATCH_COUNT
+            val receiveBuffer = ByteArray((PCM_FRAME_SIZE / 2) * BATCH_COUNT)
+            val packet = DatagramPacket(receiveBuffer, receiveBuffer.size)
+
+            while (isRunning.get() && !Thread.currentThread().isInterrupted) {
+                try {
+                    multicastSocket?.receive(packet)
+                    
+                    val senderIp = packet.address?.hostAddress ?: ""
+                    if (localIpAddresses.contains(senderIp)) continue
+                    
+                    rxPackets.incrementAndGet()
+                    
+                    // ===== 解码 G.711 =====
+                    val pcmData = decodeG711U(packet.data, packet.offset, packet.length)
+                    
+                    if (pcmData != null && pcmData.isNotEmpty()) {
+                        synchronized(jitterBuffer) {
+                            jitterBuffer.add(pcmData)
+                            if (jitterBuffer.size > MAX_JITTER_BUFFER) {
+                                audioQueue.offer(jitterBuffer.removeAt(0))
+                            }
+                        }
+                    }
+                    
+                } catch (e: InterruptedException) {
+                    break
+                } catch (e: Exception) {
+                    if (isRunning.get()) {
+                        Log.e(TAG, "接收异常: ${e.message}")
+                    }
+                }
+            }
+            Log.d(TAG, "接收线程已退出")
+        }
+    }
+
+    // ===== 播放线程 =====
+    private fun startPlayThread() {
+        playThread = thread(name = "VoicePlayThread") {
+            while (isRunning.get() && !Thread.currentThread().isInterrupted) {
+                try {
+                    val data = audioQueue.poll()
+                    if (data != null && data.isNotEmpty()) {
+                        audioTrack?.write(data, 0, data.size)
+                    } else {
+                        Thread.sleep(10)
+                    }
+                } catch (e: InterruptedException) {
+                    break
+                } catch (e: Exception) {
+                    Log.e(TAG, "播放异常: ${e.message}")
+                }
+            }
+            Log.d(TAG, "播放线程已退出")
+        }
+    }
+
+    // ===== 发送线程（参考您朋友的批量发送方式） =====
+    private fun startSendThread() {
+        sendThread?.interrupt()
+        sendThread = thread(name = "VoiceSendThread") {
+            val pcmBuffer = ByteArray(PCM_FRAME_SIZE)
+            // 合并缓冲区：BATCH_COUNT 个压缩帧
+            val compressedBatchBuf = ByteArray((PCM_FRAME_SIZE / 2) * BATCH_COUNT)
+            var batchIndexLocal = 0
+            var sendCount = 0
+
+            while (isRunning.get() && isPilotMode.get() && !Thread.currentThread().isInterrupted) {
+                try {
+                    val record = audioRecord
+                    if (record == null || record.state != AudioRecord.STATE_INITIALIZED) {
+                        Thread.sleep(100)
+                        continue
+                    }
+
+                    if (isMuted.get()) {
+                        Thread.sleep(20)
+                        continue
+                    }
+
+                    val readSize = record.read(pcmBuffer, 0, pcmBuffer.size)
+                    if (readSize > 0) {
+                        // ===== 压缩当前帧 =====
+                        val compressedFrame = encodeG711U(pcmBuffer, readSize)
+                        
+                        // ===== 拷贝进合并缓冲区 =====
+                        System.arraycopy(compressedFrame, 0, compressedBatchBuf, batchIndexLocal, compressedFrame.size)
+                        batchIndexLocal += compressedFrame.size
+
+                        // ===== 积攒够 BATCH_COUNT 个帧后一次性发送 =====
+                        if (batchIndexLocal >= compressedBatchBuf.size) {
+                            val packet = DatagramPacket(
+                                compressedBatchBuf,
+                                compressedBatchBuf.size,
+                                multicastGroup,
+                                multicastPort
+                            )
+                            multicastSocket?.send(packet)
+                            
+                            batchIndexLocal = 0
+                            txPackets.incrementAndGet()
+                            sendCount++
+                            
+                            if (sendCount % 10 == 0) {
+                                Log.d(TAG, "📤 已发送 $sendCount 批, 每批 ${compressedBatchBuf.size} 字节")
+                            }
+                        }
+                    }
+
+                } catch (e: InterruptedException) {
+                    break
+                } catch (e: Exception) {
+                    if (isRunning.get() && isPilotMode.get()) {
+                        Log.e(TAG, "发送异常: ${e.message}")
+                    }
+                }
+            }
+            Log.d(TAG, "📤 发送线程已退出")
+        }
+    }
+
+    // ===== G.711 μ-law 编码（完整实现，参考您朋友的代码） =====
+    private val BIAS = 0x84
+    private val CLIP = 32635
+
+    private fun encodeG711U(pcm: ByteArray, length: Int): ByteArray {
+        val encoded = ByteArray(length / 2)
+        var pcmIndex = 0
+        for (i in encoded.indices) {
+            val low = pcm[pcmIndex].toInt() and 0xFF
+            val high = pcm[pcmIndex + 1].toInt() shl 8
+            var sample = high or low
+            if (sample > 32767) sample -= 65536
+            pcmIndex += 2
+
+            val sign = if (sample < 0) 0 else 0x80
+            if (sample < 0) sample = -sample
+            if (sample > CLIP) sample = CLIP
+            sample += BIAS
+
+            var exponent = 7
+            var expMask = 0x4000
+            while ((sample and expMask) == 0 && exponent > 0) {
+                exponent--
+                expMask = expMask shr 1
+            }
+            val mantissa = (sample shr (exponent + 3)) and 0x0F
+            val byteVal = (sign or (exponent shl 4) or mantissa).inv() and 0xFF
+            encoded[i] = byteVal.toByte()
+        }
+        return encoded
+    }
+
+    // ===== G.711 μ-law 解码 =====
+    private fun decodeG711U(encoded: ByteArray, offset: Int, length: Int): ByteArray? {
+        try {
+            val pcm = ByteArray(length * 2)
+            var pcmIndex = 0
+            for (i in 0 until length) {
+                var q = encoded[offset + i].toInt().inv() and 0xFF
+                val sign = q and 0x80
+                val exponent = (q shr 4) and 0x07
+                val mantissa = q and 0x0F
+                var sample = ((mantissa shl 3) + BIAS) shl exponent
+                sample -= BIAS
+                if (sign == 0) sample = -sample
+
+                pcm[pcmIndex] = (sample and 0xFF).toByte()
+                pcm[pcmIndex + 1] = ((sample shr 8) and 0xFF).toByte()
+                pcmIndex += 2
+            }
+            return pcm
+        } catch (e: Exception) {
+            Log.e(TAG, "G.711 解码失败: ${e.message}")
+            return null
+        }
+    }
+
+    // ===== 角色切换 =====
     private fun handleRoleChange(role: Int) {
         val newIsPilot = role == 0
         if (newIsPilot != isPilotMode.get()) {
@@ -303,26 +500,19 @@ class VoiceService : Service() {
                 isMuted.set(false)
                 startSendThread()
                 if (promptEnabled) {
-                    mainHandler.post { 
-                        try { 
-                            promptPlayer.playPilotPrompt() 
-                        } catch (e: Exception) {
-                            Log.e(TAG, "播放提示音失败: ${e.message}")
-                        }
+                    mainHandler.post {
+                        try { promptPlayer.playPilotPrompt() } catch (e: Exception) {}
                     }
                 }
                 broadcastRoleChange(0)
                 updateNotification()
                 Log.d(TAG, "✅ 切换到飞行员模式")
             } else {
-                sendThread?.interrupt(); sendThread = null
+                sendThread?.interrupt()
+                sendThread = null
                 if (promptEnabled) {
-                    mainHandler.post { 
-                        try { 
-                            promptPlayer.playObserverPrompt() 
-                        } catch (e: Exception) {
-                            Log.e(TAG, "播放提示音失败: ${e.message}")
-                        }
+                    mainHandler.post {
+                        try { promptPlayer.playObserverPrompt() } catch (e: Exception) {}
                     }
                 }
                 broadcastRoleChange(1)
@@ -347,153 +537,6 @@ class VoiceService : Service() {
         LocalBroadcastManager.getInstance(this).sendBroadcast(
             Intent("com.example.netfloatmonitor.VOICE_DEVICE_CHANGE").apply { putExtra("DEVICE", device) }
         )
-    }
-
-    private fun startReceiveThread() {
-        receiveThread = thread(name = "VoiceReceiveThread") {
-            val buffer = ByteArray(4096)
-            val packet = DatagramPacket(buffer, buffer.size)
-            while (isRunning.get() && !Thread.currentThread().isInterrupted) {
-                try {
-                    multicastSocket?.receive(packet)
-                    val senderIp = packet.address?.hostAddress ?: ""
-                    if (localIpAddresses.contains(senderIp)) continue
-                    
-                    val data = ByteArray(packet.length)
-                    System.arraycopy(packet.data, 0, data, 0, packet.length)
-                    if (data.size >= HEADER_SIZE) {
-                        val codecTypeFromPacket = data[8].toInt() and 0xFF
-                        val audioData = data.copyOfRange(HEADER_SIZE, data.size)
-                        val codec = when (codecTypeFromPacket) {
-                            0 -> CodecFactory.getCodec("PCM")
-                            1 -> CodecFactory.getCodec("G.711")
-                            2 -> CodecFactory.getCodec("ADPCM")
-                            else -> CodecFactory.getCodec("PCM")
-                        }
-                        val pcmData = codec.decode(audioData, sampleRate)
-                        if (pcmData != null && pcmData.isNotEmpty()) {
-                            synchronized(jitterBuffer) {
-                                jitterBuffer.add(pcmData)
-                                if (jitterBuffer.size > MAX_JITTER_BUFFER) {
-                                    audioQueue.offer(jitterBuffer.removeAt(0))
-                                }
-                            }
-                        }
-                    }
-                } catch (e: InterruptedException) { 
-                    break 
-                } catch (e: Exception) { 
-                    if (isRunning.get()) Log.e(TAG, "接收异常: ${e.message}") 
-                }
-            }
-            Log.d(TAG, "接收线程已退出")
-        }
-    }
-
-    private fun startPlayThread() {
-        playThread = thread(name = "VoicePlayThread") {
-            while (isRunning.get() && !Thread.currentThread().isInterrupted) {
-                try {
-                    val data = audioQueue.poll()
-                    if (data != null && data.isNotEmpty()) {
-                        audioTrack?.write(data, 0, data.size)
-                    } else {
-                        Thread.sleep(10)
-                    }
-                } catch (e: InterruptedException) { 
-                    break 
-                } catch (e: Exception) { 
-                    Log.e(TAG, "播放异常: ${e.message}") 
-                }
-            }
-            Log.d(TAG, "播放线程已退出")
-        }
-    }
-
-    private fun startSendThread() {
-        sendThread?.interrupt()
-        sendThread = thread(name = "VoiceSendThread") {
-            val buffer = ByteArray(4096)
-            val pcmPacketSize = (sampleRate * 2 * PACKET_DURATION_MS / 1000).toInt()
-            Log.d(TAG, "🔊 发送线程启动 - 采样率: $sampleRate, 帧大小: $pcmPacketSize 字节")
-            var sendCount = 0
-
-            while (isRunning.get() && isPilotMode.get() && !Thread.currentThread().isInterrupted) {
-                try {
-                    val record = audioRecord
-                    if (record == null || record.state != AudioRecord.STATE_INITIALIZED) {
-                        Thread.sleep(100)
-                        continue
-                    }
-                    if (isMuted.get()) {
-                        Thread.sleep(PACKET_DURATION_MS.toLong())
-                        continue
-                    }
-
-                    val readSize = record.read(buffer, 0, pcmPacketSize)
-                    if (readSize > 0) {
-                        val pcmData = buffer.copyOf(readSize)
-                        
-                        // ===== 增益放大（2.5倍，带削波保护） =====
-                        val amplified = amplifyAudio(pcmData, 2.5f)
-                        
-                        val encodedData = audioCodec.encode(amplified, sampleRate)
-                        if (encodedData != null && encodedData.isNotEmpty()) {
-                            val packetData = ByteArray(HEADER_SIZE + encodedData.size)
-                            // 序列号
-                            packetData[0] = (packetSeq shr 24 and 0xFF).toByte()
-                            packetData[1] = (packetSeq shr 16 and 0xFF).toByte()
-                            packetData[2] = (packetSeq shr 8 and 0xFF).toByte()
-                            packetData[3] = (packetSeq and 0xFF).toByte()
-                            packetSeq++
-                            // 时间戳
-                            val ts = System.currentTimeMillis()
-                            packetData[4] = (ts shr 24 and 0xFF).toByte()
-                            packetData[5] = (ts shr 16 and 0xFF).toByte()
-                            packetData[6] = (ts shr 8 and 0xFF).toByte()
-                            packetData[7] = (ts and 0xFF).toByte()
-                            // 编码类型
-                            packetData[8] = when (audioCodec.getName()) { 
-                                "PCM" -> 0
-                                "G.711" -> 1
-                                "ADPCM" -> 2
-                                else -> 0 
-                            }.toByte()
-                            System.arraycopy(encodedData, 0, packetData, HEADER_SIZE, encodedData.size)
-                            
-                            multicastSocket?.send(DatagramPacket(packetData, packetData.size, multicastGroup, multicastPort))
-                            sendCount++
-                            if (sendCount % 20 == 0) {
-                                Log.d(TAG, "📤 已发送 $sendCount 包, 大小: ${packetData.size} 字节")
-                            }
-                        }
-                    }
-                } catch (e: InterruptedException) { 
-                    break 
-                } catch (e: Exception) { 
-                    if (isRunning.get()) Log.e(TAG, "发送异常: ${e.message}") 
-                }
-            }
-            Log.d(TAG, "📤 发送线程已退出，共发送 $sendCount 个包")
-        }
-    }
-
-    // ===== 音频增益 + 削波保护 =====
-    private fun amplifyAudio(pcmData: ByteArray, gain: Float): ByteArray {
-        if (pcmData.size < 2) return pcmData
-        val result = ByteArray(pcmData.size)
-        for (i in 0 until pcmData.size / 2) {
-            val low = pcmData[i * 2].toInt() and 0xFF
-            val high = pcmData[i * 2 + 1].toInt() and 0xFF
-            var sample = (high shl 8) or low
-            if (sample >= 0x8000) sample -= 0x10000
-            var amplified = (sample * gain).toInt()
-            amplified = amplified.coerceIn(-32768, 32767)
-            val unsigned = if (amplified < 0) amplified + 0x10000 else amplified
-            result[i * 2] = (unsigned and 0xFF).toByte()
-            result[i * 2 + 1] = (unsigned shr 8 and 0xFF).toByte()
-        }
-        return result
     }
 
     private fun broadcastStatus() {
@@ -523,10 +566,9 @@ class VoiceService : Service() {
     private fun updateNotification() {
         val roleText = if (isPilotMode.get()) "飞行员 🎤" else "观察者 🎧"
         val mutedText = if (isMuted.get()) " 🔇静音" else ""
-        val deviceText = " 📱${audioDeviceManager.getCurrentOutputDevice()}"
         startForeground(NOTIFICATION_ID, NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("语音对讲")
-            .setContentText("组播语音 $roleText$mutedText$deviceText")
+            .setContentText("组播语音 $roleText$mutedText | RX:${rxPackets.get()} TX:${txPackets.get()}")
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .build())
     }
@@ -546,10 +588,54 @@ class VoiceService : Service() {
             .build()
     }
 
+    private fun stopVoice() {
+        isRunning.set(false)
+        isPilotMode.set(false)
+        isPttOverridden.set(false)
+        
+        receiveThread?.interrupt(); receiveThread = null
+        sendThread?.interrupt(); sendThread = null
+        playThread?.interrupt(); playThread = null
+        
+        audioRecord?.let {
+            try { 
+                if (it.recordingState == AudioRecord.RECORDSTATE_RECORDING) it.stop()
+                it.release() 
+            } catch (e: Exception) {}
+        }
+        audioRecord = null
+        
+        audioTrack?.let {
+            try { 
+                if (it.playState == AudioTrack.PLAYSTATE_PLAYING) it.stop()
+                it.release() 
+            } catch (e: Exception) {}
+        }
+        audioTrack = null
+        
+        multicastSocket?.let {
+            try { 
+                it.leaveGroup(multicastGroup)
+                it.close() 
+            } catch (e: Exception) {}
+        }
+        multicastSocket = null
+        
+        audioQueue.clear()
+        jitterBuffer.clear()
+        
+        broadcastStatus()
+        Log.d(TAG, "语音服务已停止")
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         stopVoice()
         audioDeviceManager.release()
+        multicastLock?.let {
+            try { if (it.isHeld) it.release() } catch (e: Exception) {}
+        }
+        multicastLock = null
         try {
             LocalBroadcastManager.getInstance(this).unregisterReceiver(roleReceiver)
             LocalBroadcastManager.getInstance(this).unregisterReceiver(pttReceiver)
