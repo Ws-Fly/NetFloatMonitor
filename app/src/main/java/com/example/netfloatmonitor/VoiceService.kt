@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
@@ -35,29 +34,24 @@ class VoiceService : Service() {
         private const val NOTIFICATION_ID = 1002
         private const val CHANNEL_ID = "voice_channel"
         
-        // ===== 8kHz 黄金对讲采样率 =====
         private const val SAMPLE_RATE = 8000
         private const val CHANNEL_IN = AudioFormat.CHANNEL_IN_MONO
         private const val CHANNEL_OUT = AudioFormat.CHANNEL_OUT_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         
-        // 20ms 帧大小
         private const val PCM_FRAME_SIZE = 320
-        // 3帧合并发送（60ms），减少网络开销
         private const val BATCH_COUNT = 3
-        private const val HEADER_SIZE = 9
     }
 
     private val isRunning = AtomicBoolean(false)
     private val isPilotMode = AtomicBoolean(false)
     private val isMuted = AtomicBoolean(false)
-    private val isPttOverridden = AtomicBoolean(false)
     
     private val audioQueue = ConcurrentLinkedQueue<ByteArray>()
     
     private var multicastSocket: MulticastSocket? = null
     private var multicastGroup: InetAddress? = null
-    private var multicastPort: Int = 50000
+    private var multicastPort: Int = 18000
     
     private var audioRecord: AudioRecord? = null
     private var audioTrack: AudioTrack? = null
@@ -68,7 +62,6 @@ class VoiceService : Service() {
     
     private var promptEnabled: Boolean = true
     private var packetSeq: Int = 0
-    private var batchIndex: Int = 0
     
     private lateinit var promptPlayer: VoicePromptPlayer
     private lateinit var audioDeviceManager: AudioDeviceManager
@@ -89,18 +82,7 @@ class VoiceService : Service() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "com.example.netfloatmonitor.ROLE_CHANGE") {
                 val role = intent.getIntExtra("ROLE", 1)
-                if (!isPttOverridden.get()) {
-                    handleRoleChange(role)
-                }
-            }
-        }
-    }
-    
-    private val pttReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.example.netfloatmonitor.VOICE_PTT_STATE") {
-                val muted = intent.getBooleanExtra("MUTED", false)
-                handlePttState(muted)
+                handleRoleChange(role)
             }
         }
     }
@@ -123,10 +105,6 @@ class VoiceService : Service() {
         LocalBroadcastManager.getInstance(this).registerReceiver(
             roleReceiver,
             IntentFilter("com.example.netfloatmonitor.ROLE_CHANGE")
-        )
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-            pttReceiver,
-            IntentFilter("com.example.netfloatmonitor.VOICE_PTT_STATE")
         )
     }
 
@@ -175,10 +153,10 @@ class VoiceService : Service() {
         val action = intent?.getStringExtra("ACTION") ?: return START_NOT_STICKY
         when (action) {
             "START" -> {
-                multicastPort = intent.getIntExtra("MULTICAST_PORT", 50000)
+                multicastPort = intent.getIntExtra("MULTICAST_PORT", 18000)
                 promptEnabled = intent.getBooleanExtra("PROMPT_ENABLED", true)
 
-                val ipStr = intent.getStringExtra("MULTICAST_IP") ?: "224.0.0.1"
+                val ipStr = intent.getStringExtra("MULTICAST_IP") ?: "224.12.34.56"
                 try {
                     multicastGroup = InetAddress.getByName(ipStr)
                 } catch (e: Exception) {
@@ -202,7 +180,6 @@ class VoiceService : Service() {
         try {
             startForeground(NOTIFICATION_ID, createNotification())
             
-            // ===== 创建组播Socket =====
             val localAddr = if (localIpAddresses.isNotEmpty()) {
                 InetAddress.getByName(localIpAddresses.first())
             } else {
@@ -213,7 +190,6 @@ class VoiceService : Service() {
                 reuseAddress = true
                 setTimeToLive(64)
                 
-                // 绑定到指定网卡
                 if (localAddr != null) {
                     val ni = NetworkInterface.getByInetAddress(localAddr)
                     if (ni != null) {
@@ -226,10 +202,7 @@ class VoiceService : Service() {
                 Log.d(TAG, "✅ 组播已加入: ${multicastGroup?.hostAddress}:$multicastPort")
             }
 
-            // ===== 初始化 AudioTrack（使用标准方式，保证兼容性） =====
             initAudioTrack()
-            
-            // ===== 初始化 AudioRecord =====
             initAudioRecord()
 
             startReceiveThread()
@@ -237,10 +210,7 @@ class VoiceService : Service() {
 
             isRunning.set(true)
             isPilotMode.set(false)
-            isMuted.set(false)
-            isPttOverridden.set(false)
             packetSeq = 0
-            batchIndex = 0
             
             jitterBuffer.clear()
             rxPackets.set(0)
@@ -258,7 +228,6 @@ class VoiceService : Service() {
         }
     }
 
-    // ===== 参考您朋友的 AudioTrack 初始化 =====
     private fun initAudioTrack() {
         try {
             val minTrackBuf = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_OUT, AUDIO_FORMAT)
@@ -281,7 +250,6 @@ class VoiceService : Service() {
         }
     }
 
-    // ===== 参考您朋友的 AudioRecord 初始化 =====
     private fun initAudioRecord() {
         try {
             val minRecBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_IN, AUDIO_FORMAT)
@@ -309,10 +277,8 @@ class VoiceService : Service() {
         }
     }
 
-    // ===== 接收线程 =====
     private fun startReceiveThread() {
         receiveThread = thread(name = "VoiceReceiveThread") {
-            // 接收缓冲区大小：压缩后的数据 (PCM_FRAME_SIZE / 2) * BATCH_COUNT
             val receiveBuffer = ByteArray((PCM_FRAME_SIZE / 2) * BATCH_COUNT)
             val packet = DatagramPacket(receiveBuffer, receiveBuffer.size)
 
@@ -325,7 +291,6 @@ class VoiceService : Service() {
                     
                     rxPackets.incrementAndGet()
                     
-                    // ===== 解码 G.711 =====
                     val pcmData = decodeG711U(packet.data, packet.offset, packet.length)
                     
                     if (pcmData != null && pcmData.isNotEmpty()) {
@@ -349,7 +314,6 @@ class VoiceService : Service() {
         }
     }
 
-    // ===== 播放线程 =====
     private fun startPlayThread() {
         playThread = thread(name = "VoicePlayThread") {
             while (isRunning.get() && !Thread.currentThread().isInterrupted) {
@@ -370,12 +334,10 @@ class VoiceService : Service() {
         }
     }
 
-    // ===== 发送线程（参考您朋友的批量发送方式） =====
     private fun startSendThread() {
         sendThread?.interrupt()
         sendThread = thread(name = "VoiceSendThread") {
             val pcmBuffer = ByteArray(PCM_FRAME_SIZE)
-            // 合并缓冲区：BATCH_COUNT 个压缩帧
             val compressedBatchBuf = ByteArray((PCM_FRAME_SIZE / 2) * BATCH_COUNT)
             var batchIndexLocal = 0
             var sendCount = 0
@@ -395,14 +357,11 @@ class VoiceService : Service() {
 
                     val readSize = record.read(pcmBuffer, 0, pcmBuffer.size)
                     if (readSize > 0) {
-                        // ===== 压缩当前帧 =====
                         val compressedFrame = encodeG711U(pcmBuffer, readSize)
                         
-                        // ===== 拷贝进合并缓冲区 =====
                         System.arraycopy(compressedFrame, 0, compressedBatchBuf, batchIndexLocal, compressedFrame.size)
                         batchIndexLocal += compressedFrame.size
 
-                        // ===== 积攒够 BATCH_COUNT 个帧后一次性发送 =====
                         if (batchIndexLocal >= compressedBatchBuf.size) {
                             val packet = DatagramPacket(
                                 compressedBatchBuf,
@@ -434,7 +393,6 @@ class VoiceService : Service() {
         }
     }
 
-    // ===== G.711 μ-law 编码（完整实现，参考您朋友的代码） =====
     private val BIAS = 0x84
     private val CLIP = 32635
 
@@ -466,7 +424,6 @@ class VoiceService : Service() {
         return encoded
     }
 
-    // ===== G.711 μ-law 解码 =====
     private fun decodeG711U(encoded: ByteArray, offset: Int, length: Int): ByteArray? {
         try {
             val pcm = ByteArray(length * 2)
@@ -491,7 +448,6 @@ class VoiceService : Service() {
         }
     }
 
-    // ===== 角色切换 =====
     private fun handleRoleChange(role: Int) {
         val newIsPilot = role == 0
         if (newIsPilot != isPilotMode.get()) {
@@ -522,17 +478,6 @@ class VoiceService : Service() {
         }
     }
 
-    private fun handlePttState(muted: Boolean) {
-        if (!isPilotMode.get()) {
-            broadcastPttState(true, isPilotMode.get())
-            return
-        }
-        isMuted.set(muted)
-        isPttOverridden.set(true)
-        broadcastPttState(muted, isPilotMode.get())
-        updateNotification()
-    }
-
     private fun broadcastDeviceChange(device: String) {
         LocalBroadcastManager.getInstance(this).sendBroadcast(
             Intent("com.example.netfloatmonitor.VOICE_DEVICE_CHANGE").apply { putExtra("DEVICE", device) }
@@ -554,21 +499,11 @@ class VoiceService : Service() {
         )
     }
 
-    private fun broadcastPttState(muted: Boolean, isPilot: Boolean) {
-        LocalBroadcastManager.getInstance(this).sendBroadcast(
-            Intent("com.example.netfloatmonitor.VOICE_PTT_STATE").apply {
-                putExtra("MUTED", muted)
-                putExtra("IS_PILOT", isPilot)
-            }
-        )
-    }
-
     private fun updateNotification() {
         val roleText = if (isPilotMode.get()) "飞行员 🎤" else "观察者 🎧"
-        val mutedText = if (isMuted.get()) " 🔇静音" else ""
         startForeground(NOTIFICATION_ID, NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("语音对讲")
-            .setContentText("组播语音 $roleText$mutedText | RX:${rxPackets.get()} TX:${txPackets.get()}")
+            .setContentText("组播语音 $roleText | RX:${rxPackets.get()} TX:${txPackets.get()}")
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .build())
     }
@@ -591,7 +526,6 @@ class VoiceService : Service() {
     private fun stopVoice() {
         isRunning.set(false)
         isPilotMode.set(false)
-        isPttOverridden.set(false)
         
         receiveThread?.interrupt(); receiveThread = null
         sendThread?.interrupt(); sendThread = null
@@ -638,7 +572,6 @@ class VoiceService : Service() {
         multicastLock = null
         try {
             LocalBroadcastManager.getInstance(this).unregisterReceiver(roleReceiver)
-            LocalBroadcastManager.getInstance(this).unregisterReceiver(pttReceiver)
         } catch (e: Exception) {}
         Log.d(TAG, "VoiceService onDestroy")
     }
