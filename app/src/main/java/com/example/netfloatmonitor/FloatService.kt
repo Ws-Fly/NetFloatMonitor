@@ -80,8 +80,10 @@ class FloatService : Service() {
                 logger.save(data)
 
                 mainHandler.post {
+                    // ===== 更新悬浮窗（同时触发信号状态检测） =====
                     floatView?.updateJsonDynamic(data)
 
+                    // ===== 检测 role 变化并播报 =====
                     try {
                         val obj = org.json.JSONObject(data)
                         val currentRole = obj.optInt("role", 1)
@@ -97,8 +99,6 @@ class FloatService : Service() {
                                     } else {
                                         promptPlayer.playObserverPrompt()
                                     }
-                                } else {
-                                    Log.e("FloatService", "❌ promptPlayer 未初始化")
                                 }
                             } catch (e: Exception) {
                                 Log.e("FloatService", "❌ TTS 播报失败: ${e.message}")
@@ -116,6 +116,43 @@ class FloatService : Service() {
         }
         receiver?.start()
         Log.d("FloatService", "✅ UdpReceiver 已启动, 端口: $port")
+    }
+
+    // ============================================================
+    // 初始化悬浮窗时注册信号状态回调
+    // ============================================================
+    private fun showFloatWindow() {
+        if (floatView != null) return
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        val params = WindowManager.LayoutParams()
+
+        params.width = WindowManager.LayoutParams.WRAP_CONTENT
+        params.height = WindowManager.LayoutParams.WRAP_CONTENT
+        params.type = if (Build.VERSION.SDK_INT >= 26) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+        params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        params.format = PixelFormat.TRANSLUCENT
+        params.x = 50
+        params.y = 200
+
+        floatView = FloatView(this, wm, params)
+        
+        // ===== 注册信号状态变化回调 =====
+        floatView?.onSignalStateChanged = { state, minRssi, snr ->
+            try {
+                if (::promptPlayer.isInitialized) {
+                    promptPlayer.handleSignalStateChange(state, minRssi, snr)
+                }
+            } catch (e: Exception) {
+                Log.e("FloatService", "信号状态播报失败: ${e.message}")
+            }
+        }
+        
+        wm.addView(floatView, params)
+        Log.d("FloatService", "✅ 悬浮窗已显示，信号回调已注册")
     }
 
     private fun sendRoleChangeBroadcast(role: Int) {
@@ -144,28 +181,6 @@ class FloatService : Service() {
             putExtra("HZ", currentHz)
         }
         LocalBroadcastManager.getInstance(this@FloatService).sendBroadcast(intent)
-    }
-
-    private fun showFloatWindow() {
-        if (floatView != null) return
-        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        val params = WindowManager.LayoutParams()
-
-        params.width = WindowManager.LayoutParams.WRAP_CONTENT
-        params.height = WindowManager.LayoutParams.WRAP_CONTENT
-        params.type = if (Build.VERSION.SDK_INT >= 26) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
-        params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        params.format = PixelFormat.TRANSLUCENT
-        params.x = 50
-        params.y = 200
-
-        floatView = FloatView(this, wm, params)
-        wm.addView(floatView, params)
-        Log.d("FloatService", "✅ 悬浮窗已显示")
     }
 
     override fun onDestroy() {
