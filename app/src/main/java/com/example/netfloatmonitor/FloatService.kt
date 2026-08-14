@@ -36,7 +36,6 @@ class FloatService : Service() {
         super.onCreate()
         logger = LogManager(this)
 
-        // ===== 初始化 TTS（传入 this 作为 Context） =====
         try {
             promptPlayer = VoicePromptPlayer(this)
             Log.d("FloatService", "✅ TTS 提示音播放器初始化成功")
@@ -92,7 +91,6 @@ class FloatService : Service() {
                             lastRole = currentRole
                             Log.d("FloatService", "🔄 role 变化: $lastRole")
 
-                            // ===== TTS 播报 =====
                             try {
                                 if (::promptPlayer.isInitialized) {
                                     if (currentRole == 0) {
@@ -196,7 +194,6 @@ class FloatService : Service() {
             floatView = null
         }
 
-        // ===== 释放 TTS 资源 =====
         try {
             if (::promptPlayer.isInitialized) {
                 promptPlayer.shutdown()
