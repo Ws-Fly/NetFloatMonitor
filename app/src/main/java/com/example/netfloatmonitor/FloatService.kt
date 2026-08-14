@@ -27,24 +27,14 @@ class FloatService : Service() {
 
     private var lastRole: Int = 1
 
-    // ===== 提示音播放器引用（每次使用时重新创建） =====
-    private var promptPlayer: VoicePromptPlayer? = null
+    // ===== 提示音播放器（无参构造） =====
+    private val promptPlayer = VoicePromptPlayer()
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
         logger = LogManager(this)
-        
-        // ===== 初始化提示音播放器 =====
-        try {
-            promptPlayer = VoicePromptPlayer(this)
-            Log.d("FloatService", "✅ VoicePromptPlayer 初始化成功")
-        } catch (e: Exception) {
-            Log.e("FloatService", "❌ VoicePromptPlayer 初始化失败: ${e.message}")
-            promptPlayer = null
-        }
-        
         Log.d("FloatService", "Service onCreate 触发")
         createNotificationChannel()
         startForeground(1001, createNotification())
@@ -83,10 +73,8 @@ class FloatService : Service() {
                 logger.save(data)
 
                 mainHandler.post {
-                    // 更新悬浮窗
                     floatView?.updateJsonDynamic(data)
 
-                    // ===== 检测 role 变化并播报 =====
                     try {
                         val obj = org.json.JSONObject(data)
                         val currentRole = obj.optInt("role", 1)
@@ -95,10 +83,13 @@ class FloatService : Service() {
                             lastRole = currentRole
                             Log.d("FloatService", "🔄 role 变化: $lastRole")
 
-                            // ===== 播报语音（每次都重新创建，确保可用） =====
-                            playRolePromptSafely(currentRole)
+                            // ===== 播放提示音 =====
+                            if (currentRole == 0) {
+                                promptPlayer.playPilotPrompt()
+                            } else {
+                                promptPlayer.playObserverPrompt()
+                            }
 
-                            // 广播给 VoiceService
                             sendRoleChangeBroadcast(currentRole)
                         }
                     } catch (e: Exception) {
@@ -111,30 +102,6 @@ class FloatService : Service() {
         }
         receiver?.start()
         Log.d("FloatService", "✅ UdpReceiver 已启动, 端口: $port")
-    }
-
-    // ===== 最安全的播报方式：每次都创建新实例 =====
-    private fun playRolePromptSafely(role: Int) {
-        try {
-            Log.d("FloatService", "🔊 准备播报 role=$role")
-            
-            // ===== 每次都重新创建 VoicePromptPlayer =====
-            val player = VoicePromptPlayer(applicationContext)
-            Log.d("FloatService", "✅ VoicePromptPlayer 新实例创建成功")
-
-            if (role == 0) {
-                Log.d("FloatService", "🔊 播放: 飞行员模式")
-                player.playPilotPrompt()
-            } else {
-                Log.d("FloatService", "🔊 播放: 观察者模式")
-                player.playObserverPrompt()
-            }
-            
-            Log.d("FloatService", "✅ 播报调用完成")
-        } catch (e: Exception) {
-            Log.e("FloatService", "❌ 播报失败: ${e.message}")
-            e.printStackTrace()
-        }
     }
 
     private fun sendRoleChangeBroadcast(role: Int) {
