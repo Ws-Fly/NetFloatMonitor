@@ -43,7 +43,7 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 "com.example.netfloatmonitor.VOICE_STATUS" -> {
                     isVoiceRunning = intent.getBooleanExtra("RUNNING", false)
                     currentRole = intent.getIntExtra("ROLE", 1)
-                    try { switchVoice.isChecked = isVoiceRunning } catch (e: Exception) {}
+                    switchVoice.isChecked = isVoiceRunning
                     updateUI()
                 }
                 "com.example.netfloatmonitor.VOICE_ROLE_CHANGE" -> {
@@ -70,7 +70,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 setBackgroundColor(Color.parseColor("#1A1A2E"))
             }
 
-            // 标题
             val titleView = TextView(this).apply {
                 text = "🎤 语音对讲"
                 textSize = 22f
@@ -79,7 +78,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             }
             rootLayout.addView(titleView)
 
-            // 组播地址
             val ipLabel = TextView(this).apply {
                 text = "组播地址"
                 textSize = 15f
@@ -96,7 +94,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             }
             rootLayout.addView(etMulticastIp)
 
-            // 组播端口
             val portLabel = TextView(this).apply {
                 text = "组播端口"
                 textSize = 15f
@@ -114,7 +111,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             }
             rootLayout.addView(etMulticastPort)
 
-            // 分隔线
             val divider = View(this)
             divider.setBackgroundColor(Color.parseColor("#333333"))
             val dividerParams = LinearLayout.LayoutParams(
@@ -124,7 +120,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             divider.layoutParams = dividerParams
             rootLayout.addView(divider)
 
-            // 对讲功能总开关
             val switchLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(0, 0, 0, 0)
@@ -153,7 +148,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             }
             rootLayout.addView(switchHint)
 
-            // 分隔线
             val divider2 = View(this)
             divider2.setBackgroundColor(Color.parseColor("#333333"))
             val dividerParams2 = LinearLayout.LayoutParams(
@@ -163,7 +157,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             divider2.layoutParams = dividerParams2
             rootLayout.addView(divider2)
 
-            // 状态显示
             val statusLabel = TextView(this).apply {
                 text = "📊 实时状态"
                 textSize = 16f
@@ -187,7 +180,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             }
             rootLayout.addView(tvVoiceRole)
 
-            // 提示信息
             val hint1 = TextView(this).apply {
                 text = "💡 role=0 飞行员模式（可讲话）"
                 textSize = 13f
@@ -204,7 +196,6 @@ class VoiceSettingsActivity : AppCompatActivity() {
             }
             rootLayout.addView(hint2)
 
-            // 返回按钮
             val backBtn = Button(this).apply {
                 text = "← 返回"
                 textSize = 15f
@@ -379,20 +370,16 @@ class VoiceSettingsActivity : AppCompatActivity() {
     }
 
     private fun updateUI() {
-        try {
-            tvVoiceStatus.text = if (isVoiceRunning) {
-                "状态: ● 已连接"
-            } else {
-                "状态: ○ 未连接"
-            }
-            tvVoiceStatus.setTextColor(if (isVoiceRunning) Color.parseColor("#4CAF50") else Color.parseColor("#E74C3C"))
-
-            val roleText = if (currentRole == 0) "飞行员 🎤" else "观察者 🎧"
-            tvVoiceRole.text = "角色: $roleText"
-            tvVoiceRole.setTextColor(if (currentRole == 0) Color.parseColor("#2ECC71") else Color.parseColor("#3498DB"))
-        } catch (e: Exception) {
-            // 忽略
+        tvVoiceStatus.text = if (isVoiceRunning) {
+            "状态: ● 已连接"
+        } else {
+            "状态: ○ 未连接"
         }
+        tvVoiceStatus.setTextColor(if (isVoiceRunning) Color.parseColor("#4CAF50") else Color.parseColor("#E74C3C"))
+
+        val roleText = if (currentRole == 0) "飞行员 🎤" else "观察者 🎧"
+        tvVoiceRole.text = "角色: $roleText"
+        tvVoiceRole.setTextColor(if (currentRole == 0) Color.parseColor("#2ECC71") else Color.parseColor("#3498DB"))
     }
 
     override fun onDestroy() {
