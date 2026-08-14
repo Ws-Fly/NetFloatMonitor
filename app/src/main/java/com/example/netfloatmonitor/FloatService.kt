@@ -27,21 +27,24 @@ class FloatService : Service() {
 
     private var lastRole: Int = 1
 
-    // ===== 提示音播放器 =====
-    private lateinit var promptPlayer: VoicePromptPlayer
+    // ===== 提示音播放器引用（每次使用时重新创建） =====
+    private var promptPlayer: VoicePromptPlayer? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
         logger = LogManager(this)
+        
         // ===== 初始化提示音播放器 =====
         try {
             promptPlayer = VoicePromptPlayer(this)
             Log.d("FloatService", "✅ VoicePromptPlayer 初始化成功")
         } catch (e: Exception) {
             Log.e("FloatService", "❌ VoicePromptPlayer 初始化失败: ${e.message}")
+            promptPlayer = null
         }
+        
         Log.d("FloatService", "Service onCreate 触发")
         createNotificationChannel()
         startForeground(1001, createNotification())
@@ -92,8 +95,8 @@ class FloatService : Service() {
                             lastRole = currentRole
                             Log.d("FloatService", "🔄 role 变化: $lastRole")
 
-                            // ===== 播报语音 =====
-                            playRolePrompt(currentRole)
+                            // ===== 播报语音（每次都重新创建，确保可用） =====
+                            playRolePromptSafely(currentRole)
 
                             // 广播给 VoiceService
                             sendRoleChangeBroadcast(currentRole)
@@ -110,22 +113,24 @@ class FloatService : Service() {
         Log.d("FloatService", "✅ UdpReceiver 已启动, 端口: $port")
     }
 
-    // ===== 播报语音 =====
-    private fun playRolePrompt(role: Int) {
+    // ===== 最安全的播报方式：每次都创建新实例 =====
+    private fun playRolePromptSafely(role: Int) {
         try {
-            // 检查 promptPlayer 是否已初始化
-            if (!::promptPlayer.isInitialized) {
-                Log.e("FloatService", "❌ promptPlayer 未初始化")
-                return
-            }
+            Log.d("FloatService", "🔊 准备播报 role=$role")
+            
+            // ===== 每次都重新创建 VoicePromptPlayer =====
+            val player = VoicePromptPlayer(applicationContext)
+            Log.d("FloatService", "✅ VoicePromptPlayer 新实例创建成功")
 
             if (role == 0) {
-                Log.d("FloatService", "🔊 播报: 飞行员模式")
-                promptPlayer.playPilotPrompt()
+                Log.d("FloatService", "🔊 播放: 飞行员模式")
+                player.playPilotPrompt()
             } else {
-                Log.d("FloatService", "🔊 播报: 观察者模式")
-                promptPlayer.playObserverPrompt()
+                Log.d("FloatService", "🔊 播放: 观察者模式")
+                player.playObserverPrompt()
             }
+            
+            Log.d("FloatService", "✅ 播报调用完成")
         } catch (e: Exception) {
             Log.e("FloatService", "❌ 播报失败: ${e.message}")
             e.printStackTrace()
