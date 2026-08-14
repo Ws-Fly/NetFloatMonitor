@@ -13,12 +13,20 @@ class VoicePromptPlayer(private val context: Context) {
 
     companion object {
         private const val TAG = "VoicePromptPlayer"
+        // ===== 播报限次控制 =====
+        private const val MAX_SAME_ALERT_COUNT = 2
     }
 
     private var tts: TextToSpeech? = null
     private var isReady = false
     private val speakQueue = ConcurrentLinkedQueue<String>()
     private var isSpeaking = false
+
+    // ===== 各告警播报计数 =====
+    private var weakSignalCount = 0
+    private var lostSignalCount = 0
+    private var lastWeakState = false
+    private var lastLostState = false
 
     init {
         try {
@@ -65,6 +73,9 @@ class VoicePromptPlayer(private val context: Context) {
         }
     }
 
+    // ============================================================
+    // 1. 角色切换播报
+    // ============================================================
     fun playPilotPrompt() {
         Log.d(TAG, "🔊 播报: 飞行员模式")
         speak("飞行员模式")
@@ -75,6 +86,70 @@ class VoicePromptPlayer(private val context: Context) {
         speak("观察者模式")
     }
 
+    // ============================================================
+    // 2. 信号状态播报（告警 + 恢复）
+    // ============================================================
+
+    /**
+     * 处理信号状态变化
+     * @param newState 新状态
+     * @param minRssi 极小值 RSSI
+     * @param snr SNR 值
+     */
+    fun handleSignalStateChange(newState: SignalState, minRssi: Int, snr: Int) {
+        Log.d(TAG, "📶 信号状态变化: $newState, minRssi=$minRssi, snr=$snr")
+
+        when (newState) {
+            SignalState.WEAK -> {
+                // 信号弱：只播报 2 次
+                if (weakSignalCount < MAX_SAME_ALERT_COUNT && !lastWeakState) {
+                    weakSignalCount++
+                    lastWeakState = true
+                    Log.d(TAG, "🔊 播报信号弱 (第 $weakSignalCount 次)")
+                    speak("信号弱，请调整天线或高度")
+                } else if (weakSignalCount >= MAX_SAME_ALERT_COUNT) {
+                    Log.d(TAG, "⏭ 信号弱播报已达上限 (${MAX_SAME_ALERT_COUNT}次)，跳过")
+                }
+                // 重置丢失状态（因为已回到弱信号）
+                lastLostState = false
+                lostSignalCount = 0
+            }
+
+            SignalState.LOST -> {
+                // 信号丢失：只播报 2 次
+                if (lostSignalCount < MAX_SAME_ALERT_COUNT && !lastLostState) {
+                    lostSignalCount++
+                    lastLostState = true
+                    Log.d(TAG, "🔊 播报信号丢失 (第 $lostSignalCount 次)")
+                    speak("信号丢失，天空端失去连接")
+                } else if (lostSignalCount >= MAX_SAME_ALERT_COUNT) {
+                    Log.d(TAG, "⏭ 信号丢失播报已达上限 (${MAX_SAME_ALERT_COUNT}次)，跳过")
+                }
+                // 重置弱信号状态（因为已进入丢失）
+                lastWeakState = false
+                weakSignalCount = 0
+            }
+
+            SignalState.NORMAL -> {
+                // ===== 从异常恢复到正常：播报 "信号已恢复" =====
+                // 如果之前处于告警状态，播报恢复
+                if (lastWeakState || lastLostState) {
+                    Log.d(TAG, "🔊 播报: 信号已恢复")
+                    speak("信号已恢复")
+                }
+                // 重置所有状态
+                lastWeakState = false
+                lastLostState = false
+                weakSignalCount = 0
+                lostSignalCount = 0
+                Log.d(TAG, "✅ 信号恢复正常，状态已重置")
+            }
+        }
+    }
+
+    // ============================================================
+    // 3. 通用播报方法
+    // ============================================================
     fun playConnected() {
         Log.d(TAG, "🔊 播报: 已连接")
         speak("已连接")
@@ -85,24 +160,9 @@ class VoicePromptPlayer(private val context: Context) {
         speak("已断开")
     }
 
-    fun playLinkUp() {
-        Log.d(TAG, "🔊 播报: 链路已建立")
-        speak("链路已建立")
-    }
-
-    fun playLinkDown() {
-        Log.d(TAG, "🔊 播报: 链路已断开")
-        speak("链路已断开")
-    }
-
     fun playWarning() {
         Log.d(TAG, "🔊 播报: 警告")
         speak("警告")
-    }
-
-    fun playWarningWithText(text: String) {
-        Log.d(TAG, "🔊 播报: $text")
-        speak(text)
     }
 
     fun speakText(text: String) {
@@ -121,6 +181,9 @@ class VoicePromptPlayer(private val context: Context) {
         }
     }
 
+    // ============================================================
+    // 4. 队列管理
+    // ============================================================
     private fun speak(text: String) {
         if (text.isEmpty()) return
         if (speakQueue.contains(text)) {
@@ -172,10 +235,17 @@ class VoicePromptPlayer(private val context: Context) {
         }
     }
 
+    // ============================================================
+    // 5. 资源释放
+    // ============================================================
     fun shutdown() {
         try {
             speakQueue.clear()
             isSpeaking = false
+            weakSignalCount = 0
+            lostSignalCount = 0
+            lastWeakState = false
+            lastLostState = false
             tts?.stop()
             tts?.shutdown()
             tts = null
