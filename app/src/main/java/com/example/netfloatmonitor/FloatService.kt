@@ -27,14 +27,23 @@ class FloatService : Service() {
 
     private var lastRole: Int = 1
 
-    // ===== 提示音播放器（无参构造） =====
-    private val promptPlayer = VoicePromptPlayer()
+    // ===== TTS 提示音播放器 =====
+    private lateinit var promptPlayer: VoicePromptPlayer
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
         logger = LogManager(this)
+
+        // ===== 初始化 TTS（传入 this 作为 Context） =====
+        try {
+            promptPlayer = VoicePromptPlayer(this)
+            Log.d("FloatService", "✅ TTS 提示音播放器初始化成功")
+        } catch (e: Exception) {
+            Log.e("FloatService", "❌ TTS 初始化失败: ${e.message}")
+        }
+
         Log.d("FloatService", "Service onCreate 触发")
         createNotificationChannel()
         startForeground(1001, createNotification())
@@ -83,11 +92,19 @@ class FloatService : Service() {
                             lastRole = currentRole
                             Log.d("FloatService", "🔄 role 变化: $lastRole")
 
-                            // ===== 播放提示音 =====
-                            if (currentRole == 0) {
-                                promptPlayer.playPilotPrompt()
-                            } else {
-                                promptPlayer.playObserverPrompt()
+                            // ===== TTS 播报 =====
+                            try {
+                                if (::promptPlayer.isInitialized) {
+                                    if (currentRole == 0) {
+                                        promptPlayer.playPilotPrompt()
+                                    } else {
+                                        promptPlayer.playObserverPrompt()
+                                    }
+                                } else {
+                                    Log.e("FloatService", "❌ promptPlayer 未初始化")
+                                }
+                            } catch (e: Exception) {
+                                Log.e("FloatService", "❌ TTS 播报失败: ${e.message}")
                             }
 
                             sendRoleChangeBroadcast(currentRole)
@@ -178,6 +195,16 @@ class FloatService : Service() {
             }
             floatView = null
         }
+
+        // ===== 释放 TTS 资源 =====
+        try {
+            if (::promptPlayer.isInitialized) {
+                promptPlayer.shutdown()
+            }
+        } catch (e: Exception) {
+            // 忽略
+        }
+
         mainHandler.removeCallbacksAndMessages(null)
         Log.d("FloatService", "Service 已销毁")
     }
