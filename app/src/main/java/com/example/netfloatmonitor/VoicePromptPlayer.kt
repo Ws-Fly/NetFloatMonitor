@@ -12,24 +12,18 @@ class VoicePromptPlayer {
 
     fun playPilotPrompt() {
         Log.d(TAG, "🔊 播放飞行员提示音")
-        playTone(ToneGenerator.TONE_DTMF_8)  // 880Hz 高音
+        playTone(ToneGenerator.TONE_DTMF_8)  // 880Hz
     }
 
     fun playObserverPrompt() {
         Log.d(TAG, "🔊 播放观察者提示音")
-        playTone(ToneGenerator.TONE_DTMF_6)  // 660Hz 低音
+        playTone(ToneGenerator.TONE_DTMF_6)  // 660Hz
     }
 
     private fun playTone(toneType: Int) {
         var toneGenerator: ToneGenerator? = null
         try {
             toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, ToneGenerator.MAX_VOLUME)
-            
-            if (toneGenerator.state == ToneGenerator.STATE_NO_TONE) {
-                Log.e(TAG, "❌ ToneGenerator 状态异常")
-                return
-            }
-            
             toneGenerator.startTone(toneType, 300)
             Log.d(TAG, "✅ 提示音开始播放")
             
@@ -37,7 +31,6 @@ class VoicePromptPlayer {
             Thread.sleep(350)
             
             Log.d(TAG, "✅ 提示音播放完成")
-            
         } catch (e: Exception) {
             Log.e(TAG, "❌ 播放失败: ${e.message}", e)
         } finally {
