@@ -20,9 +20,6 @@ class VoicePromptPlayer(private val context: Context) {
     private val speakQueue = ConcurrentLinkedQueue<String>()
     private var isSpeaking = false
 
-    private var onSpeakStart: ((String) -> Unit)? = null
-    private var onSpeakComplete: ((String) -> Unit)? = null
-
     init {
         try {
             tts = TextToSpeech(context) { status ->
@@ -48,13 +45,11 @@ class VoicePromptPlayer(private val context: Context) {
                     override fun onStart(utteranceId: String?) {
                         Log.d(TAG, "TTS 开始: $utteranceId")
                         isSpeaking = true
-                        onSpeakStart?.invoke(utteranceId ?: "")
                     }
 
                     override fun onDone(utteranceId: String?) {
                         Log.d(TAG, "TTS 完成: $utteranceId")
                         isSpeaking = false
-                        onSpeakComplete?.invoke(utteranceId ?: "")
                         processQueue()
                     }
 
@@ -70,7 +65,6 @@ class VoicePromptPlayer(private val context: Context) {
         }
     }
 
-    // ===== 角色切换播报 =====
     fun playPilotPrompt() {
         Log.d(TAG, "🔊 播报: 飞行员模式")
         speak("飞行员模式")
@@ -81,7 +75,6 @@ class VoicePromptPlayer(private val context: Context) {
         speak("观察者模式")
     }
 
-    // ===== 连接状态播报 =====
     fun playConnected() {
         Log.d(TAG, "🔊 播报: 已连接")
         speak("已连接")
@@ -92,7 +85,6 @@ class VoicePromptPlayer(private val context: Context) {
         speak("已断开")
     }
 
-    // ===== 链路状态播报 =====
     fun playLinkUp() {
         Log.d(TAG, "🔊 播报: 链路已建立")
         speak("链路已建立")
@@ -103,7 +95,6 @@ class VoicePromptPlayer(private val context: Context) {
         speak("链路已断开")
     }
 
-    // ===== 告警播报 =====
     fun playWarning() {
         Log.d(TAG, "🔊 播报: 警告")
         speak("警告")
@@ -114,13 +105,11 @@ class VoicePromptPlayer(private val context: Context) {
         speak(text)
     }
 
-    // ===== 自定义播报 =====
     fun speakText(text: String) {
         Log.d(TAG, "🔊 播报: $text")
         speak(text)
     }
 
-    // ===== 停止播放 =====
     fun stop() {
         try {
             tts?.stop()
@@ -183,16 +172,6 @@ class VoicePromptPlayer(private val context: Context) {
         }
     }
 
-    // ===== 回调设置 =====
-    fun setOnSpeakStart(listener: (String) -> Unit) {
-        this.onSpeakStart = listener
-    }
-
-    fun setOnSpeakComplete(listener: (String) -> Unit) {
-        this.onSpeakComplete = listener
-    }
-
-    // ===== 资源释放 =====
     fun shutdown() {
         try {
             speakQueue.clear()
@@ -207,7 +186,6 @@ class VoicePromptPlayer(private val context: Context) {
         }
     }
 
-    // ===== 状态检查 =====
     fun isReady(): Boolean = isReady
     fun isSpeaking(): Boolean = isSpeaking
     fun getQueueSize(): Int = speakQueue.size
