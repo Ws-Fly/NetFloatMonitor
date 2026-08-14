@@ -101,7 +101,7 @@ class FloatService : Service() {
                                     }
                                 }
                             } catch (e: Exception) {
-                                Log.e("FloatService", "❌ TTS 播报失败: ${e.message}")
+                                Log.e("FloatService", "❌ 角色播报失败: ${e.message}")
                             }
 
                             sendRoleChangeBroadcast(currentRole)
@@ -118,9 +118,7 @@ class FloatService : Service() {
         Log.d("FloatService", "✅ UdpReceiver 已启动, 端口: $port")
     }
 
-    // ============================================================
-    // 初始化悬浮窗时注册信号状态回调
-    // ============================================================
+    // ===== 显示悬浮窗并注册信号回调 =====
     private fun showFloatWindow() {
         if (floatView != null) return
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -139,18 +137,23 @@ class FloatService : Service() {
         params.y = 200
 
         floatView = FloatView(this, wm, params)
-        
-        // ===== 注册信号状态变化回调 =====
+
+        // ================================================================
+        // ===== 关键修复：注册信号状态变化回调 =====
+        // ================================================================
         floatView?.onSignalStateChanged = { state, minRssi, snr ->
             try {
                 if (::promptPlayer.isInitialized) {
+                    Log.d("FloatService", "📢 信号状态变化: $state, minRssi=$minRssi, snr=$snr")
                     promptPlayer.handleSignalStateChange(state, minRssi, snr)
+                } else {
+                    Log.e("FloatService", "❌ promptPlayer 未初始化，无法播报")
                 }
             } catch (e: Exception) {
-                Log.e("FloatService", "信号状态播报失败: ${e.message}")
+                Log.e("FloatService", "❌ 信号状态播报失败: ${e.message}")
             }
         }
-        
+
         wm.addView(floatView, params)
         Log.d("FloatService", "✅ 悬浮窗已显示，信号回调已注册")
     }
