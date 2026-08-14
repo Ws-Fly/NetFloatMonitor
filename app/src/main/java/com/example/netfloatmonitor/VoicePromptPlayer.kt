@@ -18,6 +18,10 @@ class VoicePromptPlayer(private val context: Context) {
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     }
 
+    init {
+        Log.d(TAG, "VoicePromptPlayer 构造函数被调用, context=${context.packageName}")
+    }
+
     fun playPilotPrompt() {
         Log.d(TAG, "🔊 playPilotPrompt() 被调用")
         playVoice(880f, 300, "飞行员")
@@ -51,6 +55,8 @@ class VoicePromptPlayer(private val context: Context) {
                 pcmData[i * 2 + 1] = (unsigned shr 8 and 0xFF).toByte()
             }
 
+            Log.d(TAG, "PCM 数据生成完成, size=${pcmData.size}")
+
             // ===== 获取 AudioManager =====
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             if (audioManager == null) {
@@ -68,6 +74,8 @@ class VoicePromptPlayer(private val context: Context) {
             // ===== 创建 AudioTrack =====
             val minBufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
             val bufferSize = if (minBufferSize > 0) maxOf(minBufferSize, pcmData.size * 2) else pcmData.size * 2
+
+            Log.d(TAG, "minBufferSize=$minBufferSize, bufferSize=$bufferSize")
 
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -89,7 +97,7 @@ class VoicePromptPlayer(private val context: Context) {
             )
 
             if (audioTrack.state != AudioTrack.STATE_INITIALIZED) {
-                Log.e(TAG, "❌ AudioTrack 初始化失败")
+                Log.e(TAG, "❌ AudioTrack 初始化失败, state=${audioTrack.state}")
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
                 return
             }
@@ -99,6 +107,12 @@ class VoicePromptPlayer(private val context: Context) {
             // ===== 写入并播放 =====
             val writeResult = audioTrack.write(pcmData, 0, pcmData.size)
             Log.d(TAG, "写入结果: $writeResult / ${pcmData.size} 字节")
+
+            if (writeResult <= 0) {
+                Log.e(TAG, "❌ 写入失败, writeResult=$writeResult")
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
+                return
+            }
 
             audioTrack.play()
             Log.d(TAG, "AudioTrack 开始播放")
