@@ -19,11 +19,10 @@ import android.widget.TextView
 import org.json.JSONObject
 import java.util.concurrent.CopyOnWriteArrayList
 
-// ===== 信号状态枚举（供 FloatService 使用） =====
 enum class SignalState {
-    NORMAL,     // 信号正常
-    WEAK,       // 信号弱（90~98 或 SNR 5~10）
-    LOST        // 信号丢失（RSSI=110 或 SNR=0）
+    NORMAL,
+    WEAK,
+    LOST
 }
 
 class FloatView(
@@ -32,9 +31,6 @@ class FloatView(
     private val params: WindowManager.LayoutParams
 ) : LinearLayout(context) {
 
-    // ==========================================
-    // 尺寸常量定义
-    // ==========================================
     private val TEXT_COL_WIDTH = 220
     private val CHART_COL_WIDTH = 480
     
@@ -67,23 +63,18 @@ class FloatView(
         Color.parseColor("#E67E22")
     )
 
-    // ===== 信号颜色常量 =====
-    private val COLOR_SIGNAL_EXCELLENT = Color.parseColor("#2ECC71")    // 极佳 - 绿色
-    private val COLOR_SIGNAL_GOOD = Color.parseColor("#1ABC9C")         // 良好 - 蓝绿
-    private val COLOR_SIGNAL_FAIR = Color.parseColor("#F1C40F")         // 一般 - 黄色
-    private val COLOR_SIGNAL_POOR = Color.parseColor("#E67E22")         // 稍差 - 橙色
-    private val COLOR_SIGNAL_LOST = Color.parseColor("#E74C3C")         // 极差/丢失 - 红色
+    private val COLOR_SIGNAL_EXCELLENT = Color.parseColor("#2ECC71")
+    private val COLOR_SIGNAL_GOOD = Color.parseColor("#1ABC9C")
+    private val COLOR_SIGNAL_FAIR = Color.parseColor("#F1C40F")
+    private val COLOR_SIGNAL_POOR = Color.parseColor("#E67E22")
+    private val COLOR_SIGNAL_LOST = Color.parseColor("#E74C3C")
     private val COLOR_SIGNAL_DEFAULT = Color.WHITE
 
-    // ===== 当前信号状态（供 FloatService 读取） =====
     var currentSignalState: SignalState = SignalState.NORMAL
         private set
 
-    // ===== 状态变化回调（供 FloatService 注册） =====
     var onSignalStateChanged: ((SignalState, Int, Int) -> Unit)? = null
-    // 参数: (新状态, minRssi, snr)
 
-    // UI 容器组件
     private val topBar = LinearLayout(context)
     private val contentFrame = FrameLayout(context)
     private val contentPanel = LinearLayout(context)
@@ -162,7 +153,6 @@ class FloatView(
         visibility = View.VISIBLE
     }
 
-    // ===== 信号状态显示 TextView（新增） =====
     private val signalStatusView = TextView(context).apply {
         text = "📶 信号正常"
         textSize = 11f
@@ -182,7 +172,6 @@ class FloatView(
         }
         this.background = bg
 
-        // 1. 初始化右下角迷你模式状态面板
         collapsedPanel.orientation = LinearLayout.HORIZONTAL
         collapsedPanel.gravity = Gravity.CENTER
         collapsedPanel.visibility = View.GONE
@@ -191,7 +180,6 @@ class FloatView(
         collapsedPanel.addView(gndSignalIconView, iconLp)
         addView(collapsedPanel)
 
-        // 2. 初始化顶部控制状态栏
         topBar.orientation = LinearLayout.HORIZONTAL
         topBar.gravity = Gravity.END or Gravity.CENTER_VERTICAL
         topBar.setPadding(0, 0, 4, 6)
@@ -206,12 +194,10 @@ class FloatView(
         topBar.addView(toggleBtn, LinearLayout.LayoutParams(48, 48))
         addView(topBar)
 
-        // 3. 构建主内容区
         contentPanel.orientation = LinearLayout.HORIZONTAL
         airLayout.orientation = LinearLayout.VERTICAL
         gndLayout.orientation = LinearLayout.VERTICAL
         
-        // 第 1 列：AIR（顶部增加信号状态显示）
         val airPanel = createPanel("AIR", airLayout)
         val airPanelContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -220,7 +206,6 @@ class FloatView(
         airPanelContainer.addView(airPanel)
         contentPanel.addView(airPanelContainer, LinearLayout.LayoutParams(TEXT_COL_WIDTH, LinearLayout.LayoutParams.MATCH_PARENT))
         
-        // 第 2 列：GND
         val gndTextLp = LinearLayout.LayoutParams(TEXT_COL_WIDTH, LinearLayout.LayoutParams.MATCH_PARENT).apply { leftMargin = 12 }
         contentPanel.addView(createPanel("GND", gndLayout), gndTextLp)
 
@@ -412,21 +397,45 @@ class FloatView(
         return box
     }
 
-    // ===== 根据 RSSI 和 SNR 获取信号质量等级 =====
     private fun getSignalLevel(rssi: Int, snr: Int): SignalLevel {
+        // 特殊判断：RSSI == 110 或 SNR == 0 → 丢失
         if (rssi == 110 || snr == 0) {
             return SignalLevel.LOST
         }
+        
+        // 信号丢失（RSSI > 98 或 SNR < 5）
+        if (rssi > 98 || snr < 5) {
+            return SignalLevel.LOST
+        }
+        
+        // 信号弱（RSSI 90~98 或 SNR 5~10）
+        if ((rssi in 90..98) || (snr in 5..10)) {
+            return SignalLevel.POOR
+        }
+        
+        // 信号一般（RSSI 86~90 且 SNR 10~15）
+        if (rssi in 86..90 && snr in 10..15) {
+            return SignalLevel.FAIR
+        }
+        
+        // 信号良好（RSSI 76~85 且 SNR 15~20）
+        if (rssi in 76..85 && snr in 15..20) {
+            return SignalLevel.GOOD
+        }
+        
+        // 信号极佳（RSSI <= 75 且 SNR >= 20）
+        if (rssi <= 75 && snr >= 20) {
+            return SignalLevel.EXCELLENT
+        }
+        
+        // 兜底：按 RSSI 和 SNR 综合判断
         return when {
-            rssi <= 75 && snr >= 20 -> SignalLevel.EXCELLENT
-            rssi in 76..85 && snr in 15..19 -> SignalLevel.GOOD
-            rssi in 86..90 && snr in 10..14 -> SignalLevel.FAIR
-            rssi in 91..98 && snr in 5..9 -> SignalLevel.POOR
-            else -> SignalLevel.LOST
+            rssi <= 85 && snr >= 10 -> SignalLevel.GOOD
+            rssi <= 90 && snr >= 5 -> SignalLevel.FAIR
+            else -> SignalLevel.POOR
         }
     }
 
-    // ===== 获取信号对应的颜色 =====
     private fun getSignalColor(level: SignalLevel): Int {
         return when (level) {
             SignalLevel.EXCELLENT -> COLOR_SIGNAL_EXCELLENT
@@ -437,7 +446,6 @@ class FloatView(
         }
     }
 
-    // ===== 获取信号状态枚举（供 FloatService 使用） =====
     private fun getSignalState(level: SignalLevel): SignalState {
         return when (level) {
             SignalLevel.EXCELLENT, SignalLevel.GOOD, SignalLevel.FAIR -> SignalState.NORMAL
@@ -446,14 +454,12 @@ class FloatView(
         }
     }
 
-    // ===== 数据刷新 =====
     fun updateJsonDynamic(rawJson: String) {
         if (!isAttachedToWindow) return
         post {
             try {
                 val obj = JSONObject(rawJson)
                 
-                // ===== 解析 role =====
                 val role = obj.optInt("role", 1)
                 roleStatusView.apply {
                     val isPilot = role == 0
@@ -514,20 +520,18 @@ class FloatView(
 
                     if (key.endsWith("_a") || key.startsWith("air_")) {
                         updateOrAddTextWithColor(airLayout, airTextViewMap, key, valueStr, isAir = true)
-                        if (key.contains("rssi1")) {
-                            airR1 = valueStr.toFloatOrNull()
-                        }
-                        if (key.contains("rssi2")) {
-                            airR2 = valueStr.toFloatOrNull()
-                        }
-                        if (key.contains("snr")) {
-                            airSnr = valueStr.toFloatOrNull()
+                        when {
+                            key.contains("rssi1") -> airR1 = valueStr.toFloatOrNull()
+                            key.contains("rssi2") -> airR2 = valueStr.toFloatOrNull()
+                            key.contains("snr") -> airSnr = valueStr.toFloatOrNull()
                         }
                     } else if (key.endsWith("_g") || key.startsWith("gnd_")) {
                         updateOrAddTextWithColor(gndLayout, gndTextViewMap, key, valueStr, isAir = false)
-                        if (key.contains("rssi1")) gndR1 = valueStr.toFloatOrNull()
-                        if (key.contains("rssi2")) gndR2 = valueStr.toFloatOrNull()
-                        if (key.contains("snr")) gndSnr = valueStr.toFloatOrNull()
+                        when {
+                            key.contains("rssi1") -> gndR1 = valueStr.toFloatOrNull()
+                            key.contains("rssi2") -> gndR2 = valueStr.toFloatOrNull()
+                            key.contains("snr") -> gndSnr = valueStr.toFloatOrNull()
+                        }
                     } else {
                         if (key != "role") {
                             updateOrAddTextWithColor(airLayout, airTextViewMap, key, valueStr, isAir = true)
@@ -535,46 +539,52 @@ class FloatView(
                     }
                 }
 
-                // ===== 计算信号状态并更新 =====
-                val r1 = airR1?.toInt()
-                val r2 = airR2?.toInt()
-                val snr = airSnr?.toInt()
+                // ===== AIR 信号等级（独立计算） =====
+                val aR1 = airR1?.toInt()
+                val aR2 = airR2?.toInt()
+                val aSnr = airSnr?.toInt()
                 
-                if (r1 != null && r2 != null && snr != null) {
-                    val minRssi = minOf(r1, r2)
-                    val level = getSignalLevel(minRssi, snr)
-                    val color = getSignalColor(level)
-                    val state = getSignalState(level)
+                if (aR1 != null && aR2 != null && aSnr != null) {
+                    val aMinRssi = minOf(aR1, aR2)
+                    val aLevel = getSignalLevel(aMinRssi, aSnr)
+                    val aColor = getSignalColor(aLevel)
+                    val aState = getSignalState(aLevel)
                     
-                    // 更新信号图标
-                    airSignalIconView.setSignalData(airR1 ?: 0f, airR2 ?: 0f, airSnr ?: 0f, level)
+                    airSignalIconView.setSignalData(airR1 ?: 0f, airR2 ?: 0f, airSnr ?: 0f, aLevel)
                     
-                    // 更新信号状态文字
-                    val stateText = when (state) {
+                    val stateText = when (aState) {
                         SignalState.NORMAL -> "📶 信号正常"
                         SignalState.WEAK -> "⚠️ 信号弱"
                         SignalState.LOST -> "🚫 信号丢失"
                     }
                     signalStatusView.text = stateText
-                    signalStatusView.setTextColor(color)
+                    signalStatusView.setTextColor(aColor)
                     
-                    // ===== 状态变化检测并回调 =====
-                    if (state != currentSignalState) {
-                        val oldState = currentSignalState
-                        currentSignalState = state
-                        // 回调给 FloatService
-                        onSignalStateChanged?.invoke(state, minRssi, snr)
+                    if (aState != currentSignalState) {
+                        currentSignalState = aState
+                        onSignalStateChanged?.invoke(aState, aMinRssi, aSnr)
                     }
-                } else {
-                    // 数据不完整时，默认信号正常
-                    signalStatusView.text = "📶 信号正常"
-                    signalStatusView.setTextColor(COLOR_SIGNAL_EXCELLENT)
                 }
 
-                gndSignalIconView.setSignalData(gndR1 ?: 0f, gndR2 ?: 0f, gndSnr ?: 0f)
+                // ===== GND 信号等级（独立计算，互不影响） =====
+                val gR1 = gndR1?.toInt()
+                val gR2 = gndR2?.toInt()
+                val gSnr = gndSnr?.toInt()
+                
+                if (gR1 != null && gR2 != null && gSnr != null) {
+                    val gMinRssi = minOf(gR1, gR2)
+                    val gLevel = getSignalLevel(gMinRssi, gSnr)
+                    gndSignalIconView.setSignalData(gndR1 ?: 0f, gndR2 ?: 0f, gndSnr ?: 0f, gLevel)
+                } else {
+                    gndSignalIconView.setSignalData(gndR1 ?: 0f, gndR2 ?: 0f, gndSnr ?: 0f)
+                }
 
-                if (airR1 != null || airR2 != null || airSnr != null) airChartView.addData(airR1, airR2, airSnr)
-                if (gndR1 != null || gndR2 != null || gndSnr != null) gndChartView.addData(gndR1, gndR2, gndSnr)
+                if (airR1 != null || airR2 != null || airSnr != null) {
+                    airChartView.addData(airR1, airR2, airSnr)
+                }
+                if (gndR1 != null || gndR2 != null || gndSnr != null) {
+                    gndChartView.addData(gndR1, gndR2, gndSnr)
+                }
 
             } catch (e: Exception) {
                 android.util.Log.e("FloatViewError", "数据处理渲染异常: ${e.message}")
@@ -582,7 +592,6 @@ class FloatView(
         }
     }
 
-    // ===== 更新文本颜色（支持新阈值逻辑） =====
     private fun updateOrAddTextWithColor(
         layout: LinearLayout,
         map: HashMap<String, TextView>,
@@ -652,20 +661,10 @@ class FloatView(
         }
     }
 
-    // ============================================================
-    // 信号等级枚举
-    // ============================================================
     private enum class SignalLevel {
-        EXCELLENT,  // 极佳
-        GOOD,       // 良好
-        FAIR,       // 一般
-        POOR,       // 稍差
-        LOST        // 极差/丢失
+        EXCELLENT, GOOD, FAIR, POOR, LOST
     }
 
-    // ============================================================
-    // SignalIconView
-    // ============================================================
     private class SignalIconView(context: Context, private val label: String) : View(context) {
         private var r1 = 0f
         private var r2 = 0f
@@ -772,9 +771,6 @@ class FloatView(
         }
     }
 
-    // ============================================================
-    // WaveformView（无改动）
-    // ============================================================
     private class WaveformView(context: Context, private val isAir: Boolean) : View(context) {
         private val maxDataPoints = 100
         private val yAxisWidth = 85f 
@@ -885,9 +881,6 @@ class FloatView(
         }
     }
 
-    // ============================================================
-    // NoiseFloorChartView（无改动）
-    // ============================================================
     private class NoiseFloorChartView(
         context: Context, 
         private val isAir: Boolean,
