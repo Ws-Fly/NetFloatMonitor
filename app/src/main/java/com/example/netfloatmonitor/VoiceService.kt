@@ -456,7 +456,7 @@ class VoiceService : Service() {
     // ===== 角色切换 - 只切换模式，不播放提示音 =====
     private fun handleRoleChange(role: Int) {
         val newIsPilot = role == 0
-        Log.d(TAG, "🔄 handleRoleChange: role=$role, newIsPilot=$newIsPilot, currentIsPilot=${isPilotMode.get()}")
+        Log.d(TAG, "🔄 handleRoleChange: role=$role, newIsPilot=$newIsPilot")
         
         if (newIsPilot != isPilotMode.get()) {
             isPilotMode.set(newIsPilot)
@@ -474,8 +474,6 @@ class VoiceService : Service() {
                 updateNotification()
                 Log.d(TAG, "✅ 切换到观察者模式")
             }
-        } else {
-            Log.d(TAG, "⚠️ role 未变化，跳过处理")
         }
     }
 
