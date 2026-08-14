@@ -27,7 +27,6 @@ class FloatService : Service() {
 
     private var lastRole: Int = 1
 
-    // ===== TTS 提示音播放器 =====
     private lateinit var promptPlayer: VoicePromptPlayer
 
     private val mainHandler = Handler(Looper.getMainLooper())
