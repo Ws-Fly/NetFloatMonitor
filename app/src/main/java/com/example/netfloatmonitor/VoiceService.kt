@@ -81,7 +81,6 @@ class VoiceService : Service() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "com.example.netfloatmonitor.ROLE_CHANGE") {
                 val role = intent.getIntExtra("ROLE", 1)
-                Log.d(TAG, "📨 收到 role 广播: $role")
                 handleRoleChange(role)
             }
         }
@@ -453,11 +452,8 @@ class VoiceService : Service() {
         }
     }
 
-    // ===== 角色切换 - 只切换模式，不播放提示音 =====
     private fun handleRoleChange(role: Int) {
         val newIsPilot = role == 0
-        Log.d(TAG, "🔄 handleRoleChange: role=$role, newIsPilot=$newIsPilot")
-        
         if (newIsPilot != isPilotMode.get()) {
             isPilotMode.set(newIsPilot)
             
